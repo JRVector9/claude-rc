@@ -1,7 +1,6 @@
 {
-  "version": "1.9.0",
+  "version": "1.9.1",
   "changes": [
-    "멀티세션 지원: /switch <세션명>으로 런타임 전환",
-    "/sessions 버튼 키보드 추가, 현재 세션 표시"
+    "완료 메시지에 /sessions, /switch 설명 및 멀티세션 사용법 추가"
   ]
 }
