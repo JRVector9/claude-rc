@@ -74,98 +74,158 @@ Claude Code 출력 → tmux capture-pane → 브릿지 → Telegram 답장
 
 ---
 
-## Step 1: 의존성 확인 및 설치
+## 재설치 감지 (Step 1 진입 전)
 
-아래 세 가지를 순서대로 확인한다. 없는 항목이 있으면 AskUserQuestion 도구로 설치 여부를 묻는다.
-
-### 1-1. Homebrew 확인
+Step 1로 가기 전, `~/.claude-rc/main.py` 가 존재하는지 확인한다:
 
 ```bash
-command -v brew && echo "brew OK" || echo "NOT_FOUND"
+[ -f "$HOME/.claude-rc/main.py" ] && echo "INSTALLED" || echo "FRESH"
 ```
 
-brew가 없으면 AskUserQuestion 으로 묻는다:
+`INSTALLED` 이면 AskUserQuestion 도구로 묻는다:
+
+```
+이미 claude-rc가 설치되어 있습니다.
+
+기존 설치가 감지됐습니다 (~/.claude-rc).
+봇 토큰이나 Chat ID를 바꾸거나, 파일 전체를 새로 설치할 수 있습니다.
+
+RECOMMENDATION: A — 설정값만 바꾸는 게 빠릅니다.
+
+A) 설정만 업데이트 (봇 토큰 / Chat ID 재입력 후 브릿지 재시작)
+B) 전체 재설치 (기존 파일 덮어쓰기)
+C) 취소
+```
+
+- **A**: Step 2로 바로 이동 (파일 생성 건너뜀, Step 2 → Step 4 → Step 5 → Step 6)
+- **B**: 전체 설치 진행 (Step 1부터)
+- **C**: 종료
+
+`FRESH` 이면 그대로 Step 1로 진행한다.
+
+---
+
+## Step 1: 의존성 확인 및 설치
+
+먼저 3가지를 한 번에 확인한다:
+
+```bash
+BREW=$(command -v brew >/dev/null 2>&1 && echo "OK" || echo "MISSING")
+TMUX=$(command -v tmux >/dev/null 2>&1 && echo "OK" || echo "MISSING")
+PY=$(python3 -c "import sys; exit(0 if sys.version_info >= (3,8) else 1)" 2>/dev/null && echo "OK" || echo "MISSING")
+echo "brew=$BREW tmux=$TMUX python=$PY"
+```
+
+각 항목이 `MISSING` 이면 아래 순서대로 AskUserQuestion 도구로 묻고 설치한다.
+
+### 1-1. Homebrew가 없을 때
 
 ```
 Homebrew가 설치되어 있지 않습니다.
-tmux와 Python 자동 설치에 필요합니다. 설치하겠습니까?
 
-A) yes — Homebrew 자동 설치
-B) no — 중단 (https://brew.sh 에서 수동 설치 후 다시 실행)
+Homebrew는 macOS용 앱 관리 도구입니다. 명령어 한 줄로 tmux, Python을 설치할 수 있게 해줍니다.
+설치에 1~2분 정도 걸립니다.
+
+RECOMMENDATION: A — Homebrew 없이는 다음 단계로 진행할 수 없습니다.
+
+A) 설치하기 (권장)
+B) 취소 — 직접 설치 후 다시 실행 (https://brew.sh)
 ```
 
 - **A**: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"` 실행 후 계속
 - **B**: 중단
 
-### 1-2. tmux 확인
-
-```bash
-command -v tmux && tmux -V || echo "NOT_FOUND"
-```
-
-tmux가 없으면 AskUserQuestion 으로 묻는다:
+### 1-2. tmux가 없을 때
 
 ```
 tmux가 설치되어 있지 않습니다.
-터미널 세션 관리에 필요합니다. 설치하겠습니까?
 
-A) yes — brew install tmux 실행
-B) no — 중단
+tmux는 터미널 세션 관리 도구입니다. Claude Code를 백그라운드에서 계속 켜두면서
+Telegram 브릿지가 연결할 수 있게 해주는 핵심 역할을 합니다.
+설치에 30초 정도 걸립니다.
+
+RECOMMENDATION: A — brew install tmux 한 줄로 바로 설치됩니다.
+
+A) 설치하기 (권장) — brew install tmux
+B) 취소
 ```
 
 - **A**: `brew install tmux` 실행 후 계속
 - **B**: 중단
 
-### 1-3. Python 3.8+ 확인
-
-```bash
-python3 --version 2>/dev/null || echo "NOT_FOUND"
-```
-
-Python이 없거나 3.8 미만이면 AskUserQuestion 으로 묻는다:
+### 1-3. Python 3.8+가 없을 때
 
 ```
 Python 3.8 이상이 설치되어 있지 않습니다.
-브릿지 실행에 필요합니다. 설치하겠습니까?
 
-A) yes — brew install python3 실행
-B) no — 중단
+Python은 Telegram ↔ tmux 사이를 연결하는 브릿지 코드를 실행합니다.
+설치에 1~2분 정도 걸립니다.
+
+RECOMMENDATION: A — brew install python3 로 바로 설치 가능합니다.
+
+A) 설치하기 (권장) — brew install python3
+B) 취소
 ```
 
 - **A**: `brew install python3` 실행 후 계속
 - **B**: 중단
 
-세 가지가 모두 확인되면 다음 메시지를 출력하고 Step 2로 진행한다:
+세 가지가 모두 확인되면 Step 2로 진행한다:
 > "✅ 환경 확인 완료: brew, tmux, Python 모두 준비됐습니다."
 
 ---
 
 ## Step 2: 사용자에게 정보 수집
 
-아래 3가지를 순서대로 질문한다 (한 번에 하나씩):
+아래 3가지를 순서대로 AskUserQuestion 도구로 질문한다 (한 번에 하나씩).
 
-1. **설치 경로**
-   다음과 같이 질문한다:
-   > "설치 경로를 입력하세요.
-   > 기본값 `~/.claude-rc` 로 설치하시겠습니까? **(yes / no)**
-   > no 선택 시 직접 경로를 입력해주세요."
+### 2-1. 설치 경로
 
-   - **yes** → `~/.claude-rc` 사용
-   - **no** → 경로를 직접 입력받아 사용
-   - `~` 는 실제 홈 경로(`$HOME`)로 치환
+```
+브릿지 파일을 어디에 설치할지 정합니다.
 
-2. **Telegram 봇 토큰**
-   - "@BotFather 에서 받은 봇 토큰을 입력하세요"
-   - 형식 예시: `1234567890:ABCdefGHI...`
+기본 경로는 ~/.claude-rc 입니다. 특별한 이유가 없다면 기본값을 추천합니다.
 
-3. **Telegram Chat ID**
-   - "본인의 Telegram Chat ID를 입력하세요 (@userinfobot 에서 확인 가능)"
-   - 형식 예시: `7598341229`
+RECOMMENDATION: A — 기본 경로로 충분합니다.
 
-수집한 값을 변수로 기억:
-- `INSTALL_PATH` = 입력값 (없으면 `~/.claude-rc`, `~`는 실제 홈 경로로 치환)
-- `BOT_TOKEN` = 입력값
-- `CHAT_ID` = 입력값 (정수)
+A) 기본 경로 사용 (~/.claude-rc)
+B) 직접 경로 입력
+```
+
+- **A**: `INSTALL_PATH = $HOME/.claude-rc`
+- **B**: 경로를 직접 입력받아 사용, `~`는 실제 홈 경로로 치환
+
+### 2-2. Telegram 봇 토큰
+
+```
+Telegram 봇 토큰을 입력해주세요.
+
+아직 봇이 없다면:
+1. Telegram 앱에서 @BotFather 검색
+2. /newbot 전송
+3. 봇 이름 입력 후 발급받은 토큰 복사
+
+형식 예시: 1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ
+```
+
+입력받은 값을 `BOT_TOKEN` 으로 저장한다.
+
+### 2-3. Telegram Chat ID
+
+```
+본인의 Telegram Chat ID를 입력해주세요.
+
+확인 방법:
+1. Telegram 앱에서 @userinfobot 검색
+2. /start 전송
+3. 표시된 숫자 ID 복사
+
+형식 예시: 7598341229
+```
+
+입력받은 값을 `CHAT_ID` (정수) 로 저장한다.
+
+수집 완료 후 Step 3으로 진행한다.
 
 ---
 
@@ -669,17 +729,39 @@ if __name__ == "__main__":
 
 ## Step 4: 의존성 설치
 
+Python 가상환경을 만들고 필요한 패키지 2개(Telegram 라이브러리, YAML 파서)를 설치한다.
+약 30초 소요된다:
+
 ```bash
 cd INSTALL_PATH
 python3 -m venv .venv
 .venv/bin/pip install -q -r requirements.txt
 ```
 
+완료되면 Step 5로 진행한다:
+> "✅ 패키지 설치 완료"
+
 ---
 
 ## Step 5: LaunchAgent 등록
 
-아래 plist를 `~/Library/LaunchAgents/com.user.claude-rc.plist`에 생성한다.
+plist를 생성하기 전에 AskUserQuestion 도구로 묻는다:
+
+```
+브릿지를 시스템 자동 시작에 등록합니다.
+
+macOS의 자동 시작 관리자(LaunchAgent)에 브릿지를 등록하면:
+• 지금 바로 백그라운드에서 브릿지가 시작됩니다
+• Mac을 재시작해도 자동으로 켜집니다
+• 브릿지가 예기치 않게 꺼지면 자동으로 재시작됩니다
+
+RECOMMENDATION: A — 이 단계를 건너뛰면 매번 수동으로 브릿지를 실행해야 합니다.
+
+A) 등록하기 (권장)
+B) 건너뛰기 — 수동 실행만 사용 (Step 6으로 이동)
+```
+
+**A 선택 시** — 아래 plist를 `~/Library/LaunchAgents/com.user.claude-rc.plist`에 생성한다.
 `INSTALL_PATH`는 실제 경로로 치환한다:
 
 ```xml
@@ -787,13 +869,4 @@ iTerm2에서 Claude Code 세션 보기:
 ## 주의사항
 
 - 이 스킬은 macOS + iTerm2 전용이다
-- tmux가 없으면 `brew install tmux` 안내
-- Python 3.8 미만이면 업그레이드 안내
 - 봇 토큰은 @BotFather, chat ID는 @userinfobot에서 확인
-- 이미 설치된 경우(`INSTALL_PATH/main.py` 존재): config만 업데이트하고 재시작 안내
-
-## 재설치/업데이트 감지
-
-스킬 시작 시 `INSTALL_PATH/main.py`가 이미 존재하는지 확인한다.
-- 존재하면: "이미 설치됨. 봇 토큰/Chat ID만 업데이트할까요?" 질문
-- 없으면: 전체 설치 진행
