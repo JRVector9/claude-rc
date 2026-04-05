@@ -1,6 +1,6 @@
 ---
 name: claude-rc
-version: "1.9.1"
+version: "1.9.2"
 description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿지를 설치하고 설정합니다. 사용자가 텔레그램으로 Claude에게 명령을 보내고 답변을 받을 수 있게 합니다. Triggers on: claude-rc, telegram-rc, 텔레그램 브릿지, telegram bridge, telegram iterm, telegram claude. Use when: user wants to control Claude Code via Telegram, set up telegram bot for iTerm2."
 ---
 
@@ -11,7 +11,7 @@ description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿
 스킬이 시작되면 **가장 먼저** 아래를 실행한다.
 
 ```bash
-CURRENT_VERSION="1.9.1"
+CURRENT_VERSION="1.9.2"
 REMOTE_JSON=$(curl -sf "https://raw.githubusercontent.com/JRVector9/claude-rc/main/version.json" 2>/dev/null || echo "")
 ```
 
@@ -412,6 +412,7 @@ class TmuxSession:
     def ensure_session(self):
         if not self.session_exists():
             self.create_session()
+            self._pipe_active = False  # 새 세션 생성 시 pipe 재연결 필요
 
     def start_pipe(self):
         Path(self.cfg.output_log).touch()

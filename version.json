@@ -1,6 +1,6 @@
 {
-  "version": "1.9.1",
+  "version": "1.9.2",
   "changes": [
-    "완료 메시지에 /sessions, /switch 설명 및 멀티세션 사용법 추가"
+    "버그픽스: 세션 재생성 시 pipe-pane 재연결 안 되던 문제 수정"
   ]
 }

@@ -74,6 +74,7 @@ class TmuxSession:
     def ensure_session(self):
         if not self.session_exists():
             self.create_session()
+            self._pipe_active = False  # 새 세션 생성 시 pipe 재연결 필요
 
     def start_pipe(self):
         Path(self.cfg.output_log).touch()
