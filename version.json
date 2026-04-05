@@ -1,8 +1,8 @@
 {
-  "version": "1.1.0",
+  "version": "1.2.0",
   "changes": [
-    "tmux / Python 없을 시 설치 자동 안내 (brew install 포함)",
-    "설치 완료 후 Telegram으로 완료 메시지 자동 발송",
-    "LaunchAgent RunAtLoad=true 설정으로 재부팅 시 자동 시작"
+    "설치 전 기존 설치 감지 — 설정만 업데이트하거나 전체 재설치 선택 가능",
+    "의존성 확인을 1번의 bash로 통합, 각 설치 단계에 RECOMMENDATION 추가",
+    "LaunchAgent 등록 전 설명 화면 추가, 봇 토큰/Chat ID 취득 방법 안내"
   ]
 }
