@@ -50,8 +50,8 @@ B) 건너뛰기 — 현재 버전으로 계속 진행
 
 - **A 선택 시**: 아래를 실행한다
   ```bash
-  curl -fsSL "https://raw.githubusercontent.com/JRVector9/claude-rc/main/.claude/skills/telegram-rc/SKILL.md" \
-    -o ~/.claude/skills/telegram-rc/SKILL.md
+  curl -fsSL "https://raw.githubusercontent.com/JRVector9/claude-rc/main/.claude/skills/claude-rc/SKILL.md" \
+    -o ~/.claude/skills/claude-rc/SKILL.md
   ```
   완료 후 다음 메시지를 출력하고 **종료**한다:
   > "스킬이 업데이트됐습니다. `/claude-rc` 를 다시 실행해주세요."
