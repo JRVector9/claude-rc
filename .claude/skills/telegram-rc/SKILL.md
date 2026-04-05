@@ -21,7 +21,7 @@ Claude Code 출력 → tmux capture-pane → 브릿지 → Telegram 답장
 
 ## Step 1: 의존성 확인 및 설치
 
-아래 순서로 각 도구를 확인하고, 없으면 사용자에게 설치 여부를 묻는다.
+아래 세 가지를 순서대로 확인한다. 없는 항목이 있으면 AskUserQuestion 도구로 설치 여부를 묻는다.
 
 ### 1-1. Homebrew 확인
 
@@ -29,16 +29,18 @@ Claude Code 출력 → tmux capture-pane → 브릿지 → Telegram 답장
 command -v brew && echo "brew OK" || echo "NOT_FOUND"
 ```
 
-brew가 없으면:
-> "Homebrew가 설치되어 있지 않습니다. tmux와 Python 설치에 필요합니다.
-> 설치하겠습니까? (yes / no)"
+brew가 없으면 AskUserQuestion 으로 묻는다:
 
-- **yes**: 아래 명령 실행
-  ```bash
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-  ```
-  완료 후 다음 단계로 진행.
-- **no**: "Homebrew 없이는 자동 설치가 어렵습니다. https://brew.sh 에서 수동 설치 후 다시 실행해주세요." 안내하고 중단.
+```
+Homebrew가 설치되어 있지 않습니다.
+tmux와 Python 자동 설치에 필요합니다. 설치하겠습니까?
+
+A) yes — Homebrew 자동 설치
+B) no — 중단 (https://brew.sh 에서 수동 설치 후 다시 실행)
+```
+
+- **A**: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"` 실행 후 계속
+- **B**: 중단
 
 ### 1-2. tmux 확인
 
@@ -46,16 +48,18 @@ brew가 없으면:
 command -v tmux && tmux -V || echo "NOT_FOUND"
 ```
 
-tmux가 없으면:
-> "tmux가 설치되어 있지 않습니다. tmux는 터미널 세션 관리에 필요합니다.
-> 설치하겠습니까? (yes / no)"
+tmux가 없으면 AskUserQuestion 으로 묻는다:
 
-- **yes**: 실행
-  ```bash
-  brew install tmux
-  ```
-  설치 완료 후 `tmux -V` 로 확인하고 다음 단계로 진행.
-- **no**: "tmux 없이는 브릿지를 실행할 수 없습니다." 안내하고 중단.
+```
+tmux가 설치되어 있지 않습니다.
+터미널 세션 관리에 필요합니다. 설치하겠습니까?
+
+A) yes — brew install tmux 실행
+B) no — 중단
+```
+
+- **A**: `brew install tmux` 실행 후 계속
+- **B**: 중단
 
 ### 1-3. Python 3.8+ 확인
 
@@ -63,18 +67,20 @@ tmux가 없으면:
 python3 --version 2>/dev/null || echo "NOT_FOUND"
 ```
 
-Python이 없거나 3.8 미만이면:
-> "Python 3.8 이상이 설치되어 있지 않습니다.
-> 설치하겠습니까? (yes / no)"
+Python이 없거나 3.8 미만이면 AskUserQuestion 으로 묻는다:
 
-- **yes**: 실행
-  ```bash
-  brew install python3
-  ```
-  완료 후 `python3 --version` 으로 확인하고 다음 단계로 진행.
-- **no**: "Python 없이는 브릿지를 실행할 수 없습니다." 안내하고 중단.
+```
+Python 3.8 이상이 설치되어 있지 않습니다.
+브릿지 실행에 필요합니다. 설치하겠습니까?
 
-세 가지가 모두 확인되면:
+A) yes — brew install python3 실행
+B) no — 중단
+```
+
+- **A**: `brew install python3` 실행 후 계속
+- **B**: 중단
+
+세 가지가 모두 확인되면 다음 메시지를 출력하고 Step 2로 진행한다:
 > "✅ 환경 확인 완료: brew, tmux, Python 모두 준비됐습니다."
 
 ---
@@ -110,13 +116,15 @@ Python이 없거나 3.8 미만이면:
 
 ## Step 3: 프로젝트 파일 생성
 
+**사용자에게 묻지 않고 아래 파일 전체를 한 번에 생성한다. 중간에 확인 질문 없이 완료까지 진행한다.**
+
 `INSTALL_PATH` 디렉토리와 하위 폴더를 생성한다:
 
 ```bash
 mkdir -p INSTALL_PATH/{bridge,config,logs,state}
 ```
 
-그런 다음 아래 파일들을 **정확히** 해당 경로에 Write 도구로 생성한다.
+아래 파일들을 **모두** 해당 경로에 Write 도구로 생성한다.
 
 ---
 
