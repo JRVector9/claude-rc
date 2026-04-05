@@ -1,7 +1,7 @@
 {
-  "version": "1.8.1",
+  "version": "1.8.2",
   "changes": [
-    "설치 완료 메시지에 tmux/Claude 구조 및 재시작 방법 추가",
-    "iTerm2 새 창 tmux 세션 자동 열기"
+    "완료 메시지에 tmux new -s claude 재시작 명령 추가",
+    "세션 있을 때/없을 때 구분해서 안내"
   ]
 }
