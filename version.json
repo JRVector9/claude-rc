@@ -1,7 +1,6 @@
 {
-  "version": "1.8.2",
+  "version": "1.8.3",
   "changes": [
-    "완료 메시지에 tmux new -s claude 재시작 명령 추가",
-    "세션 있을 때/없을 때 구분해서 안내"
+    "완료 메시지 tmux 안내 개선: attach/new 구분 명확화"
   ]
 }
