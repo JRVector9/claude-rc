@@ -1,6 +1,6 @@
 ---
 name: telegram-rc
-version: "1.3.0"
+version: "1.4.0"
 description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿지를 설치하고 설정합니다. 사용자가 텔레그램으로 Claude에게 명령을 보내고 답변을 받을 수 있게 합니다. Triggers on: telegram-rc, 텔레그램 브릿지, telegram bridge, telegram iterm, telegram claude. Use when: user wants to control Claude Code via Telegram, set up telegram bot for iTerm2."
 ---
 
@@ -11,7 +11,7 @@ description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿
 스킬이 시작되면 **가장 먼저** 아래를 실행한다.
 
 ```bash
-CURRENT_VERSION="1.3.0"
+CURRENT_VERSION="1.4.0"
 REMOTE_JSON=$(curl -sf "https://raw.githubusercontent.com/JRVector9/claude-rc/main/version.json" 2>/dev/null || echo "")
 ```
 
@@ -212,71 +212,61 @@ B) 직접 경로 입력
 
 ### 2-2. Telegram 봇 토큰
 
-AskUserQuestion 도구로 묻기 전에, 다음 안내를 텍스트로 출력한다:
+AskUserQuestion 도구로 묻는다:
 
 ```
-📱 Telegram 봇 토큰이 필요합니다.
+Telegram 봇 토큰이 필요합니다.
 
-아직 봇이 없다면 지금 만들어주세요 (2분 소요):
+아직 봇이 없다면 지금 만들어야 합니다 (2분 소요):
+  1. Telegram 앱에서 @BotFather 검색 후 채팅 시작
+  2. /newbot 전송
+  3. 봇 이름 입력 (예: MyClaudeBot)
+  4. 봇 사용자 이름 입력 (예: my_claude_bot) — 반드시 _bot으로 끝나야 함
+  5. BotFather가 토큰을 발급해줍니다
 
-1. Telegram 앱 열기
-2. 검색창에 @BotFather 입력 후 채팅 시작
-3. /newbot 입력 후 전송
-4. 봇 이름 입력 (예: MyClaudeBot)
-5. 봇 사용자 이름 입력 (예: my_claude_bot) — 반드시 _bot으로 끝나야 함
-6. BotFather가 토큰을 발급해줍니다 (숫자:문자열 형식)
+RECOMMENDATION: A — 지금 바로 입력하면 설치가 한 번에 완료됩니다.
 
-토큰 형식 예시: 1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ
-
-준비되면 아래에서 A를 선택 후 Other를 클릭해 토큰을 붙여넣어주세요.
+A) 토큰 입력 (권장)
+B) 설치 완료 후 입력 — config 파일만 나중에 수정
 ```
 
-그 다음 AskUserQuestion 도구로 묻는다:
+- **A 선택 시**: 아래 텍스트를 출력하고 사용자의 다음 메시지를 기다린다:
+  ```
+  봇 토큰을 이 채팅창에 바로 붙여넣어 주세요.
+  예시: 1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ
+  ```
+  사용자가 입력한 텍스트를 `BOT_TOKEN` 으로 저장한다.
 
-```
-BotFather에서 받은 토큰을 준비했나요?
-
-RECOMMENDATION: A — Other를 클릭해 토큰을 붙여넣으세요.
-
-A) 토큰 입력 (Other를 클릭해 붙여넣기)
-B) 취소
-```
-
-- **A + Other 텍스트**: 입력값을 `BOT_TOKEN` 으로 저장한다.
-- **B**: 중단
+- **B 선택 시**: `BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"` (플레이스홀더) 로 저장하고 계속 진행한다.
+  설치 완료 후 `INSTALL_PATH/config/config.yaml` 에서 직접 수정하도록 안내한다.
 
 ### 2-3. Telegram Chat ID
 
-AskUserQuestion 도구로 묻기 전에, 다음 안내를 텍스트로 출력한다:
+AskUserQuestion 도구로 묻는다:
 
 ```
-📱 Telegram Chat ID가 필요합니다.
+본인의 Telegram Chat ID가 필요합니다.
 
 확인 방법 (1분 소요):
+  1. Telegram 앱에서 @userinfobot 검색 후 채팅 시작
+  2. /start 전송
+  3. 표시된 숫자가 본인의 Chat ID입니다
 
-1. Telegram 앱 열기
-2. 검색창에 @userinfobot 입력 후 채팅 시작
-3. /start 입력 후 전송
-4. 표시된 숫자가 본인의 Chat ID입니다
+RECOMMENDATION: A — 지금 입력하면 설치가 한 번에 완료됩니다.
 
-Chat ID 형식 예시: 7598341229
-
-준비되면 아래에서 A를 선택 후 Other를 클릭해 Chat ID를 입력해주세요.
+A) Chat ID 입력 (권장)
+B) 설치 완료 후 입력 — config 파일만 나중에 수정
 ```
 
-그 다음 AskUserQuestion 도구로 묻는다:
+- **A 선택 시**: 아래 텍스트를 출력하고 사용자의 다음 메시지를 기다린다:
+  ```
+  Chat ID를 이 채팅창에 입력해주세요.
+  예시: 7598341229
+  ```
+  사용자가 입력한 텍스트를 `CHAT_ID` (정수) 로 저장한다.
 
-```
-Chat ID를 준비했나요?
-
-RECOMMENDATION: A — Other를 클릭해 Chat ID를 입력하세요.
-
-A) Chat ID 입력 (Other를 클릭해 입력)
-B) 취소
-```
-
-- **A + Other 텍스트**: 입력값을 `CHAT_ID` (정수) 로 저장한다.
-- **B**: 중단
+- **B 선택 시**: `CHAT_ID = 0` (플레이스홀더) 로 저장하고 계속 진행한다.
+  설치 완료 후 `INSTALL_PATH/config/config.yaml` 에서 직접 수정하도록 안내한다.
 
 수집 완료 후 Step 3으로 진행한다.
 

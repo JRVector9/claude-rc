@@ -1,8 +1,8 @@
 {
-  "version": "1.3.0",
+  "version": "1.4.0",
   "changes": [
-    "봇 토큰/Chat ID 입력 전 BotFather 및 userinfobot 단계별 안내 추가",
-    "의존성 확인 전 팝업 예고 메시지 추가 (Yes/don't ask again 안내)",
-    "토큰 입력 방법을 Other 클릭으로 명확하게 안내"
+    "봇 토큰/Chat ID를 채팅창에서 직접 붙여넣기로 입력 (Other 버튼 불필요)",
+    "설치 완료 후 나중에 입력하는 옵션 추가 (config 파일 직접 수정)",
+    "토큰 입력 전 BotFather/userinfobot 안내를 AskUserQuestion 안에 통합"
   ]
 }
