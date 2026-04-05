@@ -1,6 +1,6 @@
 ---
 name: telegram-rc
-version: "1.4.0"
+version: "1.5.0"
 description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿지를 설치하고 설정합니다. 사용자가 텔레그램으로 Claude에게 명령을 보내고 답변을 받을 수 있게 합니다. Triggers on: telegram-rc, 텔레그램 브릿지, telegram bridge, telegram iterm, telegram claude. Use when: user wants to control Claude Code via Telegram, set up telegram bot for iTerm2."
 ---
 
@@ -11,7 +11,7 @@ description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿
 스킬이 시작되면 **가장 먼저** 아래를 실행한다.
 
 ```bash
-CURRENT_VERSION="1.4.0"
+CURRENT_VERSION="1.5.0"
 REMOTE_JSON=$(curl -sf "https://raw.githubusercontent.com/JRVector9/claude-rc/main/version.json" 2>/dev/null || echo "")
 ```
 
@@ -71,6 +71,19 @@ Claude Code 출력 → tmux capture-pane → 브릿지 → Telegram 답장
 ```
 
 **전제 조건:** tmux, Python 3.8+, iTerm2 설치됨
+
+---
+
+## 설치 단계 안내
+
+설치는 아래 6단계로 자동 진행됩니다. 각 단계에서 선택지가 주어지며, 기본값(A)을 선택하면 됩니다.
+
+- **Step 1** — 환경 확인: brew, tmux, Python 3 설치 여부 체크. 없으면 자동 설치 제안.
+- **Step 2** — 정보 수집: 설치 경로, 봇 토큰, Chat ID 입력. 채팅창에 직접 붙여넣으면 됨.
+- **Step 3** — 파일 생성: 브릿지 코드 6개 파일 자동 생성. 터미널에 Write 작업이 여러 개 표시되지만 클릭 없이 자동 진행됨.
+- **Step 4** — 패키지 설치: Python 가상환경 + Telegram 라이브러리 설치. 약 30초 소요.
+- **Step 5** — 자동 시작 등록: macOS LaunchAgent에 등록하면 재부팅 후에도 자동 실행됨.
+- **Step 6** — 실행 및 완료: tmux 세션 생성, 브릿지 시작, Telegram으로 완료 알림 전송.
 
 ---
 
@@ -274,6 +287,9 @@ B) 설치 완료 후 입력 — config 파일만 나중에 수정
 
 ## Step 3: 프로젝트 파일 생성
 
+파일 생성 전에 사용자에게 아래 텍스트를 출력한다:
+> "파일 생성을 시작합니다. 터미널에 Write 작업이 여러 개 표시되지만 자동으로 진행됩니다. 완료될 때까지 기다려 주세요."
+
 **사용자에게 묻지 않고 아래 파일 전체를 한 번에 생성한다. 중간에 확인 질문 없이 완료까지 진행한다.**
 
 `INSTALL_PATH` 디렉토리와 하위 폴더를 생성한다:
@@ -368,6 +384,7 @@ class TmuxSession:
         self.cfg = cfg
         self.lock = asyncio.Lock()
         self._pipe_active = False
+        self._last_sent_text = ''
 
     def session_exists(self) -> bool:
         r = subprocess.run(['tmux', 'has-session', '-t', self.cfg.session_name],
@@ -435,6 +452,7 @@ class TmuxSession:
                 self.start_pipe()
             anchor = self._capture_anchor()
             log_offset = self._log_size()
+            self._last_sent_text = text.strip()
             subprocess.run([
                 'tmux', 'send-keys', '-t', self.cfg.session_name, text, 'Enter'
             ])
@@ -479,7 +497,34 @@ class TmuxSession:
                     anchor_idx = i
                     break
             new_lines = all_lines[anchor_idx + 1:] if anchor_idx >= 0 else all_lines[-50:]
+        new_lines = self._skip_sent_echo(new_lines, self._last_sent_text)
         return self._clean_lines(new_lines)
+
+    def _skip_sent_echo(self, lines: list[str], sent: str) -> list[str]:
+        """Skip lines that are the user's echoed input (appears plain text in Claude Code's chat UI)."""
+        if not sent:
+            return lines
+        remaining = sent
+        result_start = 0
+        for i, line in enumerate(lines):
+            s = line.strip()
+            if s.startswith('❯'):
+                s = s[1:].strip()
+            if not s:
+                result_start = i + 1
+                continue
+            if remaining.startswith(s):
+                remaining = remaining[len(s):].strip()
+                result_start = i + 1
+                if not remaining:
+                    break
+            elif s in remaining:
+                remaining = ''
+                result_start = i + 1
+                break
+            else:
+                break
+        return lines[result_start:]
 
     def _clean_lines(self, lines: list[str]) -> str:
         cleaned = []
@@ -542,7 +587,7 @@ SHORTCUT_KEYBOARD = ReplyKeyboardMarkup(
          KeyboardButton("3"), KeyboardButton("4")],
         [KeyboardButton("↵ Enter"), KeyboardButton("↑"),
          KeyboardButton("↓"), KeyboardButton("⎋ Esc")],
-        [KeyboardButton("📺 /cap")],
+        [KeyboardButton("/cap")],
     ],
     resize_keyboard=True,
     one_time_keyboard=False,
@@ -553,7 +598,6 @@ KEY_MAP = {
     "↑":       "Up",
     "↓":       "Down",
     "⎋ Esc":   "Escape",
-    "📺 /cap":  None,
 }
 
 
@@ -599,8 +643,8 @@ class TelegramBot:
         exists = self.session.session_exists()
         pipe   = self.session._pipe_active
         await update.message.reply_text(
-            f"tmux 세션: {'✅ 실행 중' if exists else '❌ 없음'}\n"
-            f"출력 파이프: {'✅ 연결됨' if pipe else '❌ 끊김'}",
+            f"tmux 세션: {'실행 중' if exists else '없음'}\n"
+            f"출력 파이프: {'연결됨' if pipe else '끊김'}",
             reply_markup=SHORTCUT_KEYBOARD,
         )
 
@@ -611,7 +655,7 @@ class TelegramBot:
             return await update.message.reply_text("실행 중인 tmux 세션 없음")
         lines = []
         for s in sessions:
-            attached = "👁 연결됨" if s['attached'] else "분리됨"
+            attached = "연결됨" if s['attached'] else "분리됨"
             target   = " ← 현재" if s['name'] == self.session.cfg.session_name else ""
             lines.append(f"• {s['name']}  windows:{s['windows']}  {attached}{target}")
         await update.message.reply_text("\n".join(lines), reply_markup=SHORTCUT_KEYBOARD)
@@ -628,7 +672,7 @@ class TelegramBot:
             return await update.message.reply_text("(화면 비어있음)")
         for chunk in _split(screen, MAX_MSG_LEN):
             await update.message.reply_text(
-                f"```\n{chunk}\n```", parse_mode="Markdown",
+                chunk,
                 reply_markup=SHORTCUT_KEYBOARD,
             )
 
@@ -650,9 +694,6 @@ class TelegramBot:
         if not text:
             return
 
-        if text == "📺 /cap":
-            return await self._cmd_cap(update, ctx)
-
         if text in KEY_MAP:
             key = KEY_MAP[text]
             if key:
@@ -665,7 +706,7 @@ class TelegramBot:
             await update.message.reply_text(f"[{text}] 전송됨", reply_markup=SHORTCUT_KEYBOARD)
             return
 
-        thinking_msg = await update.message.reply_text("⏳", reply_markup=SHORTCUT_KEYBOARD)
+        thinking_msg = await update.message.reply_text("waiting...", reply_markup=SHORTCUT_KEYBOARD)
         try:
             log_offset, anchor = await self.session.send(text)
             response = await self.session.wait_for_response(log_offset, anchor)
@@ -796,7 +837,7 @@ plist를 생성하기 전에 AskUserQuestion 도구로 묻는다:
 macOS의 자동 시작 관리자(LaunchAgent)에 브릿지를 등록하면:
 • 지금 바로 백그라운드에서 브릿지가 시작됩니다
 • Mac을 재시작해도 자동으로 켜집니다
-• 브릿지가 예기치 않게 꺼지면 자동으로 재시작됩니다
+• 브릿지가 예기치 않게 종료되면 자동으로 재시작됩니다
 
 RECOMMENDATION: A — 이 단계를 건너뛰면 매번 수동으로 브릿지를 실행해야 합니다.
 
@@ -804,10 +845,13 @@ A) 등록하기 (권장)
 B) 건너뛰기 — 수동 실행만 사용 (Step 6으로 이동)
 ```
 
-**A 선택 시** — 아래 plist를 `~/Library/LaunchAgents/com.user.claude-rc.plist`에 생성한다.
+**A 선택 시** — Write 도구가 아닌 **bash cat heredoc**으로 plist를 생성한다.
+(Write 도구는 `~/Library/LaunchAgents/` 경로에 쓰기 실패할 수 있으므로 bash를 사용한다.)
 `INSTALL_PATH`는 실제 경로로 치환한다:
 
-```xml
+```bash
+mkdir -p ~/Library/LaunchAgents
+cat > ~/Library/LaunchAgents/com.user.claude-rc.plist << 'PLIST_EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -837,7 +881,9 @@ B) 건너뛰기 — 수동 실행만 사용 (Step 6으로 이동)
     </dict>
 </dict>
 </plist>
+PLIST_EOF
 ```
+단, heredoc의 `INSTALL_PATH`는 실제 경로로 치환하여 실행한다 (예: `/Users/username/.claude-rc`).
 
 ---
 

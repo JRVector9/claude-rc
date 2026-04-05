@@ -1,8 +1,8 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "changes": [
-    "봇 토큰/Chat ID를 채팅창에서 직접 붙여넣기로 입력 (Other 버튼 불필요)",
-    "설치 완료 후 나중에 입력하는 옵션 추가 (config 파일 직접 수정)",
-    "토큰 입력 전 BotFather/userinfobot 안내를 AskUserQuestion 안에 통합"
+    "plist 생성을 bash heredoc으로 변경 (Write 도구 에러 수정)",
+    "유저 메시지 echo 버튼 응답에 포함되는 버그 수정",
+    "이모지 제거, /cap 수정, waiting... 표시, 단계 안내 추가"
   ]
 }
