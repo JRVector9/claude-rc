@@ -107,7 +107,22 @@ C) 취소
 
 ## Step 1: 의존성 확인 및 설치
 
-먼저 3가지를 한 번에 확인한다:
+bash 실행 전에 AskUserQuestion 도구로 먼저 묻는다:
+
+```
+설치에 필요한 환경을 확인합니다.
+
+brew, tmux, Python 3 — 이 3가지가 있어야 브릿지가 동작합니다.
+확인을 위해 터미널 명령 실행 허가를 요청할 것입니다.
+팝업이 뜨면 "Yes" 또는 "Yes, and don't ask again"을 클릭해주세요.
+
+A) 확인 시작
+B) 취소
+```
+
+**B 선택 시** 종료한다.
+
+**A 선택 시** 3가지를 한 번에 확인한다:
 
 ```bash
 BREW=$(command -v brew >/dev/null 2>&1 && echo "OK" || echo "MISSING")
