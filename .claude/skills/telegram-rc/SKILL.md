@@ -645,7 +645,7 @@ python3 -m venv .venv
     <key>KeepAlive</key>
     <true/>
     <key>RunAtLoad</key>
-    <false/>
+    <true/>
     <key>StandardOutPath</key>
     <string>INSTALL_PATH/logs/launchd-stdout.log</string>
     <key>StandardErrorPath</key>
@@ -661,41 +661,70 @@ python3 -m venv .venv
 
 ---
 
-## Step 6: 완료 안내
+## Step 6: 자동 시작 및 완료
 
-설치가 완료되면 사용자에게 다음을 안내한다:
+사용자에게 묻지 않고 아래를 순서대로 직접 실행한다.
 
+### 6-1. tmux 세션 생성 및 Claude Code 실행
+
+```bash
+# 기존 세션이 있으면 건너뜀
+tmux has-session -t claude 2>/dev/null || tmux new-session -d -s claude -x 220 -y 50
+# Claude Code 실행
+tmux send-keys -t claude "claude" Enter
 ```
-✅ claude-rc 설치 완료!
 
-─── 시작 방법 ───────────────────────────
+### 6-2. LaunchAgent 로드 (브릿지 즉시 시작)
 
-1. tmux 세션에 Claude Code 실행:
-   tmux new -s claude
-   (세션 안에서) claude
+```bash
+# 기존에 로드된 경우 먼저 언로드
+launchctl unload ~/Library/LaunchAgents/com.user.claude-rc.plist 2>/dev/null || true
+launchctl load ~/Library/LaunchAgents/com.user.claude-rc.plist
+```
 
-2. iTerm2에서 연결해서 보기:
-   tmux attach -t claude
+`RunAtLoad=true` 이므로 로드 즉시 브릿지가 백그라운드에서 시작된다.
+3초 대기 후 브릿지가 정상 실행 중인지 확인:
 
-3. 브릿지 시작:
-   cd INSTALL_PATH
-   .venv/bin/python3 main.py
+```bash
+sleep 3
+launchctl list | grep claude-rc
+```
 
-4. Telegram에서 /start 전송
+### 6-3. Telegram으로 설치 완료 메시지 전송
 
-─── 브릿지 명령어 ────────────────────────
-/status    — 연결 상태
+아래 curl 명령으로 사용자의 Telegram에 직접 알림을 보낸다.
+`BOT_TOKEN`과 `CHAT_ID`는 Step 2에서 수집한 실제 값으로 치환한다:
+
+```bash
+curl -s -X POST "https://api.telegram.org/botBOT_TOKEN/sendMessage" \
+  -d "chat_id=CHAT_ID" \
+  --data-urlencode "text=✅ claude-rc 설치 완료!
+
+이제 Telegram으로 Claude Code를 제어할 수 있습니다.
+
+사용 가능한 명령어:
+/status    — 브릿지 상태 확인
 /sessions  — tmux 세션 목록
 /interrupt — Ctrl+C
 /cap       — 현재 화면 캡처
 /help      — 도움말
 
-키보드 버튼: 1 2 3 4 | Enter ↑ ↓ Esc | 📺/cap
+일반 텍스트를 입력하면 Claude Code로 전달됩니다."
 ```
 
-LaunchAgent로 자동 시작하려면:
-```bash
-launchctl load ~/Library/LaunchAgents/com.user.claude-rc.plist
+### 6-4. 최종 안내 (단 하나)
+
+Claude Code 채팅창에 다음 메시지 하나만 출력한다:
+
+```
+✅ 설치 완료! Telegram에 알림을 보냈습니다.
+
+iTerm2에서 Claude Code 세션 보기:
+  tmux attach -t claude
+
+다음에 Claude Code를 새로 시작할 때:
+  tmux new -s claude
+  claude
 ```
 
 ---
