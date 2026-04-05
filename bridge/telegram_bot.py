@@ -28,6 +28,7 @@ KEY_MAP = {
     "↑":       "Up",
     "↓":       "Down",
     "⎋ Esc":   "Escape",
+    "1": "1", "2": "2", "3": "3", "4": "4",
 }
 
 
@@ -73,7 +74,7 @@ class TelegramBot:
     async def _cmd_status(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_allowed(update): return await self._reject(update)
         exists = self.session.session_exists()
-        pipe   = self.session._pipe_active
+        pipe   = self.session.pipe_active
         await update.message.reply_text(
             f"현재 세션: {self.session.active_session}\n"
             f"tmux 세션: {'실행 중' if exists else '없음'}\n"
@@ -105,7 +106,7 @@ class TelegramBot:
                 reply_markup=SHORTCUT_KEYBOARD,
             )
         target = args[0]
-        if self.session.switch_to(target):
+        if await self.session.switch_to(target):
             await update.message.reply_text(
                 f"세션 전환 완료: {target}",
                 reply_markup=SHORTCUT_KEYBOARD,
@@ -152,24 +153,17 @@ class TelegramBot:
             return
 
         if text in KEY_MAP:
-            key = KEY_MAP[text]
-            if key:
-                await self.session.send_key(key)
-                await update.message.reply_text(f"[{text}] 전송됨", reply_markup=SHORTCUT_KEYBOARD)
-            return
-
-        if text in ("1", "2", "3", "4"):
-            await self.session.send_key(text)
+            await self.session.send_key(KEY_MAP[text])
             await update.message.reply_text(f"[{text}] 전송됨", reply_markup=SHORTCUT_KEYBOARD)
             return
 
         thinking_msg = await update.message.reply_text("typing...", reply_markup=SHORTCUT_KEYBOARD)
         try:
-            log_offset, anchor = await self.session.send(text)
-            response = await self.session.wait_for_response(log_offset, anchor)
+            log_offset, anchor, sent_text = await self.session.send(text)
+            response = await self.session.wait_for_response(log_offset, anchor, sent_text)
         except Exception as e:
             logger.exception("session error")
-            await thinking_msg.edit_text(f"오류: {e}")
+            await thinking_msg.edit_text("오류가 발생했습니다. 로그를 확인하세요.")
             return
 
         await thinking_msg.delete()

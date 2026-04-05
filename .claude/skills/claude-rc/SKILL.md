@@ -1,6 +1,6 @@
 ---
 name: claude-rc
-version: "1.9.2"
+version: "1.10.0"
 description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿지를 설치하고 설정합니다. 사용자가 텔레그램으로 Claude에게 명령을 보내고 답변을 받을 수 있게 합니다. Triggers on: claude-rc, telegram-rc, 텔레그램 브릿지, telegram bridge, telegram iterm, telegram claude. Use when: user wants to control Claude Code via Telegram, set up telegram bot for iTerm2."
 ---
 
@@ -11,7 +11,7 @@ description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿
 스킬이 시작되면 **가장 먼저** 아래를 실행한다.
 
 ```bash
-CURRENT_VERSION="1.9.2"
+CURRENT_VERSION="1.10.0"
 REMOTE_JSON=$(curl -sf "https://raw.githubusercontent.com/JRVector9/claude-rc/main/version.json" 2>/dev/null || echo "")
 ```
 
@@ -340,14 +340,20 @@ logging:
 tmux session controller — owns the PTY, iTerm2 just displays via attach.
 """
 import asyncio
+import logging
 import os
 import re
+import shlex
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 CLAUDE_PROMPT_RE = re.compile(r'^❯\s*$', re.MULTILINE)
+SESSION_NAME_RE = re.compile(r'^[a-zA-Z0-9_\-]{1,50}$')
+_DANGEROUS_CTRL = re.compile(r'\bC-[dDzZ]\b')
 
 _NOISE_RE = re.compile(
     r'^(?:'
@@ -383,19 +389,30 @@ class TmuxSession:
         self.active_session = cfg.session_name
         self.lock = asyncio.Lock()
         self._pipe_active = False
-        self._last_sent_text = ''
 
-    def switch_to(self, session_name: str) -> bool:
+    @property
+    def pipe_active(self) -> bool:
+        return self._pipe_active
+
+    async def switch_to(self, session_name: str) -> bool:
         """Switch active session. Returns True if session exists."""
-        r = subprocess.run(['tmux', 'has-session', '-t', session_name], capture_output=True)
+        if not SESSION_NAME_RE.match(session_name):
+            return False
+        r = await asyncio.to_thread(
+            subprocess.run, ['tmux', 'has-session', '-t', session_name],
+            capture_output=True
+        )
         if r.returncode != 0:
             return False
-        # Stop pipe on old session
-        if self._pipe_active:
-            subprocess.run(['tmux', 'pipe-pane', '-t', self.active_session], capture_output=True)
-            self._pipe_active = False
-        self.active_session = session_name
-        self._last_sent_text = ''
+        async with self.lock:
+            if self._pipe_active:
+                await asyncio.to_thread(
+                    subprocess.run,
+                    ['tmux', 'pipe-pane', '-t', self.active_session],
+                    capture_output=True
+                )
+                self._pipe_active = False
+            self.active_session = session_name
         return True
 
     def session_exists(self) -> bool:
@@ -411,15 +428,22 @@ class TmuxSession:
 
     def ensure_session(self):
         if not self.session_exists():
+            try:
+                open(self.cfg.output_log, 'w').close()  # clear stale log for new session
+            except OSError:
+                pass
             self.create_session()
-            self._pipe_active = False  # 새 세션 생성 시 pipe 재연결 필요
+            self._pipe_active = False
 
     def start_pipe(self):
         Path(self.cfg.output_log).touch()
-        subprocess.run([
+        r = subprocess.run([
             'tmux', 'pipe-pane', '-t', self.active_session,
-            f'cat >> {self.cfg.output_log}'
-        ])
+            f'cat >> {shlex.quote(self.cfg.output_log)}'
+        ], capture_output=True)
+        if r.returncode != 0:
+            logger.warning("pipe-pane failed: %s", r.stderr.decode(errors='replace'))
+            return
         self._pipe_active = True
 
     def list_sessions(self) -> list[dict]:
@@ -458,48 +482,61 @@ class TmuxSession:
         lines = self.capture_pane(scrollback=200)
         return '\n'.join(lines).strip()
 
-    async def send(self, text: str) -> tuple[int, str]:
+    async def send(self, text: str) -> tuple[int, str, str]:
+        if _DANGEROUS_CTRL.search(text):
+            raise ValueError("허용되지 않은 제어 문자입니다.")
+        sent = text.strip()
         async with self.lock:
-            self.ensure_session()
+            await asyncio.to_thread(self.ensure_session)
             if not self._pipe_active:
-                self.start_pipe()
-            anchor = self._capture_anchor()
+                await asyncio.to_thread(self.start_pipe)
+            anchor = await asyncio.to_thread(self._capture_anchor)
             log_offset = self._log_size()
-            self._last_sent_text = text.strip()
-            subprocess.run([
-                'tmux', 'send-keys', '-t', self.active_session, text, 'Enter'
-            ])
-            return log_offset, anchor
+            # -l sends text literally, preventing tmux key name interpretation
+            await asyncio.to_thread(
+                subprocess.run,
+                ['tmux', 'send-keys', '-t', self.active_session, '-l', text]
+            )
+            await asyncio.to_thread(
+                subprocess.run,
+                ['tmux', 'send-keys', '-t', self.active_session, 'Enter']
+            )
+        return log_offset, anchor, sent
 
     async def send_key(self, key: str):
         async with self.lock:
-            self.ensure_session()
-            subprocess.run(['tmux', 'send-keys', '-t', self.active_session, key])
+            await asyncio.to_thread(self.ensure_session)
+            await asyncio.to_thread(
+                subprocess.run,
+                ['tmux', 'send-keys', '-t', self.active_session, key]
+            )
 
     async def send_interrupt(self):
         async with self.lock:
-            subprocess.run(['tmux', 'send-keys', '-t', self.active_session, 'C-c'])
+            await asyncio.to_thread(
+                subprocess.run,
+                ['tmux', 'send-keys', '-t', self.active_session, 'C-c']
+            )
 
-    async def wait_for_response(self, log_offset: int, anchor: str) -> str:
+    async def wait_for_response(self, log_offset: int, anchor: str, sent_text: str) -> str:
         start = time.time()
         last_size = log_offset
         last_change = time.time()
         while True:
             await asyncio.sleep(self.cfg.poll_interval)
-            raw = self._read_log_from(log_offset)
-            size = len(raw)
-            if size > 0 and CLAUDE_PROMPT_RE.search(raw[-500:]):
+            size, tail = self._read_log_tail(log_offset)
+            if tail and CLAUDE_PROMPT_RE.search(tail):
                 await asyncio.sleep(0.4)
-                return self._extract_response(anchor)
+                return self._extract_response(anchor, sent_text)
             if size != last_size:
                 last_size = size
                 last_change = time.time()
-            elif size > 0 and (time.time() - last_change) > self.cfg.quiet_seconds:
-                return self._extract_response(anchor)
+            elif size > log_offset and (time.time() - last_change) > self.cfg.quiet_seconds:
+                return self._extract_response(anchor, sent_text)
             if time.time() - start > self.cfg.max_wait_seconds:
-                return self._extract_response(anchor) or "(응답 시간 초과)"
+                return self._extract_response(anchor, sent_text) or "(응답 시간 초과)"
 
-    def _extract_response(self, anchor: str) -> str:
+    def _extract_response(self, anchor: str, sent_text: str) -> str:
         all_lines = self.capture_pane(scrollback=500)
         if anchor == "__START__":
             new_lines = all_lines
@@ -510,11 +547,11 @@ class TmuxSession:
                     anchor_idx = i
                     break
             new_lines = all_lines[anchor_idx + 1:] if anchor_idx >= 0 else all_lines[-50:]
-        new_lines = self._skip_sent_echo(new_lines, self._last_sent_text)
+        new_lines = self._skip_sent_echo(new_lines, sent_text)
         return self._clean_lines(new_lines)
 
     def _skip_sent_echo(self, lines: list[str], sent: str) -> list[str]:
-        """Skip lines that are the user's echoed input (appears plain text in Claude Code's chat UI)."""
+        """Skip lines that are the user's echoed input."""
         if not sent:
             return lines
         remaining = sent
@@ -540,24 +577,19 @@ class TmuxSession:
         return lines[result_start:]
 
     def _clean_lines(self, lines: list[str]) -> str:
-        cleaned = []
-        for line in lines:
-            s = line.rstrip()
-            if _NOISE_RE.match(s.strip()):
-                continue
-            if _STATUS_RE.search(s):
-                continue
-            s = _SPINNER_CHARS.sub('', s).strip()
-            cleaned.append(s if s else '')
         result = []
         prev_blank = False
-        for line in cleaned:
-            if line == '':
+        for line in lines:
+            s = line.rstrip()
+            if _NOISE_RE.match(s.strip()) or _STATUS_RE.search(s):
+                continue
+            s = _SPINNER_CHARS.sub('', s).strip()
+            if s == '':
                 if not prev_blank:
                     result.append('')
                 prev_blank = True
             else:
-                result.append(line)
+                result.append(s)
                 prev_blank = False
         return '\n'.join(result).strip()
 
@@ -567,13 +599,17 @@ class TmuxSession:
         except FileNotFoundError:
             return 0
 
-    def _read_log_from(self, offset: int) -> str:
+    def _read_log_tail(self, offset: int, tail_bytes: int = 1024) -> tuple[int, str]:
+        """Returns (total_size, tail_text) — reads only the last tail_bytes after offset."""
         try:
             with open(self.cfg.output_log, 'rb') as f:
-                f.seek(offset)
-                return f.read().decode('utf-8', errors='replace')
+                f.seek(0, 2)
+                size = f.tell()
+                read_from = max(offset, size - tail_bytes)
+                f.seek(read_from)
+                return size, f.read().decode('utf-8', errors='replace')
         except FileNotFoundError:
-            return ""
+            return offset, ""
 
 ```
 
@@ -612,6 +648,7 @@ KEY_MAP = {
     "↑":       "Up",
     "↓":       "Down",
     "⎋ Esc":   "Escape",
+    "1": "1", "2": "2", "3": "3", "4": "4",
 }
 
 
@@ -657,7 +694,7 @@ class TelegramBot:
     async def _cmd_status(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_allowed(update): return await self._reject(update)
         exists = self.session.session_exists()
-        pipe   = self.session._pipe_active
+        pipe   = self.session.pipe_active
         await update.message.reply_text(
             f"현재 세션: {self.session.active_session}\n"
             f"tmux 세션: {'실행 중' if exists else '없음'}\n"
@@ -689,7 +726,7 @@ class TelegramBot:
                 reply_markup=SHORTCUT_KEYBOARD,
             )
         target = args[0]
-        if self.session.switch_to(target):
+        if await self.session.switch_to(target):
             await update.message.reply_text(
                 f"세션 전환 완료: {target}",
                 reply_markup=SHORTCUT_KEYBOARD,
@@ -736,24 +773,17 @@ class TelegramBot:
             return
 
         if text in KEY_MAP:
-            key = KEY_MAP[text]
-            if key:
-                await self.session.send_key(key)
-                await update.message.reply_text(f"[{text}] 전송됨", reply_markup=SHORTCUT_KEYBOARD)
-            return
-
-        if text in ("1", "2", "3", "4"):
-            await self.session.send_key(text)
+            await self.session.send_key(KEY_MAP[text])
             await update.message.reply_text(f"[{text}] 전송됨", reply_markup=SHORTCUT_KEYBOARD)
             return
 
         thinking_msg = await update.message.reply_text("typing...", reply_markup=SHORTCUT_KEYBOARD)
         try:
-            log_offset, anchor = await self.session.send(text)
-            response = await self.session.wait_for_response(log_offset, anchor)
+            log_offset, anchor, sent_text = await self.session.send(text)
+            response = await self.session.wait_for_response(log_offset, anchor, sent_text)
         except Exception as e:
             logger.exception("session error")
-            await thinking_msg.edit_text(f"오류: {e}")
+            await thinking_msg.edit_text("오류가 발생했습니다. 로그를 확인하세요.")
             return
 
         await thinking_msg.delete()

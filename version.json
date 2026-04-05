@@ -1,6 +1,9 @@
 {
-  "version": "1.9.2",
+  "version": "1.10.0",
   "changes": [
-    "버그픽스: 세션 재생성 시 pipe-pane 재연결 안 되던 문제 수정"
+    "보안: pipe-pane 경로 shlex.quote 적용, 세션명 검증, C-d/C-z 제어문자 차단",
+    "안정성: switch_to() lock 추가(race condition), start_pipe() 실패 감지, 세션 재생성 시 로그 초기화",
+    "성능: asyncio.to_thread로 블로킹 subprocess 해소, 로그 tail 읽기 최적화",
+    "품질: sent_text 파라미터화(race condition), pipe_active 프로퍼티, DRY 개선"
   ]
 }
