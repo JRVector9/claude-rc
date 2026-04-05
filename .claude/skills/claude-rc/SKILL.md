@@ -11,7 +11,7 @@ description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿
 스킬이 시작되면 **가장 먼저** 아래를 실행한다.
 
 ```bash
-CURRENT_VERSION="1.6.0"
+CURRENT_VERSION="1.7.1"
 REMOTE_JSON=$(curl -sf "https://raw.githubusercontent.com/JRVector9/claude-rc/main/version.json" 2>/dev/null || echo "")
 ```
 
