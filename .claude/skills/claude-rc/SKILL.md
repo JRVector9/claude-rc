@@ -225,7 +225,7 @@ B) 직접 경로 입력
 
 ### 2-2. Telegram 봇 토큰
 
-AskUserQuestion 도구로 묻는다:
+AskUserQuestion 도구로 묻는다. **옵션 라벨은 아래 텍스트를 정확히 그대로 쓴다. '(추천)', '(추체)', '(Recommended)' 등 어떤 텍스트도 추가하지 않는다.**
 
 ```
 Telegram 봇 토큰이 필요합니다.
@@ -237,10 +237,8 @@ Telegram 봇 토큰이 필요합니다.
   4. 봇 사용자 이름 입력 (예: my_claude_bot) — 반드시 _bot으로 끝나야 함
   5. BotFather가 토큰을 발급해줍니다
 
-RECOMMENDATION: A — 지금 바로 입력하면 설치가 한 번에 완료됩니다.
-
-A) 토큰 입력 (추천)
-B) 설치 완료 후 입력 — config 파일만 나중에 수정
+A) 지금 입력
+B) 나중에 입력 — 설치 후 config 파일 직접 수정
 ```
 
 - **A 선택 시**: 아래 텍스트를 출력하고 사용자의 다음 메시지를 기다린다:
@@ -255,7 +253,7 @@ B) 설치 완료 후 입력 — config 파일만 나중에 수정
 
 ### 2-3. Telegram Chat ID
 
-AskUserQuestion 도구로 묻는다:
+AskUserQuestion 도구로 묻는다. **옵션 라벨은 아래 텍스트를 정확히 그대로 쓴다. '(추천)', '(추체)', '(Recommended)' 등 어떤 텍스트도 추가하지 않는다.**
 
 ```
 본인의 Telegram Chat ID가 필요합니다.
@@ -265,10 +263,8 @@ AskUserQuestion 도구로 묻는다:
   2. /start 전송
   3. 표시된 숫자가 본인의 Chat ID입니다
 
-RECOMMENDATION: A — 지금 입력하면 설치가 한 번에 완료됩니다.
-
-A) Chat ID 입력 (추천)
-B) 설치 완료 후 입력 — config 파일만 나중에 수정
+A) 지금 입력
+B) 나중에 입력 — 설치 후 config 파일 직접 수정
 ```
 
 - **A 선택 시**: 아래 텍스트를 출력하고 사용자의 다음 메시지를 기다린다:
@@ -898,8 +894,11 @@ PLIST_EOF
 ```bash
 # 기존 세션이 있으면 건너뜀
 tmux has-session -t claude 2>/dev/null || tmux new-session -d -s claude -x 220 -y 50
-# Claude Code 실행
-tmux send-keys -t claude "claude" Enter
+# PATH를 포함해서 Claude Code 실행 (경로 문제 방지)
+tmux send-keys -t claude "export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:\$PATH && claude" Enter
+# 3초 대기 후 실제로 실행됐는지 확인
+sleep 3
+tmux capture-pane -t claude -p | tail -5
 ```
 
 ### 6-2. LaunchAgent 로드 (브릿지 즉시 시작)
@@ -926,19 +925,23 @@ launchctl list | grep claude-rc
 ```bash
 curl -s -X POST "https://api.telegram.org/botBOT_TOKEN/sendMessage" \
   -d "chat_id=CHAT_ID" \
-  --data-urlencode "text=claude-rc 브릿지가 시작됐습니다.
+  --data-urlencode "text=claude-rc 설치 완료!
 
-/start 를 눌러 연결을 확인하세요.
+Telegram에서 바로 사용할 수 있습니다.
+먼저 /start 를 눌러 연결을 확인하세요.
 
-사용 가능한 명령어:
-/start     — 연결 확인
-/status    — 브릿지 상태 확인
-/sessions  — tmux 세션 목록
-/interrupt — Ctrl+C
-/cap       — 현재 화면 캡처
-/help      — 도움말
+[사용 방법]
+- 텍스트 입력 → Claude Code로 전달
+- /start   — 연결 확인 (여기서 시작)
+- /status  — 브릿지 상태 확인
+- /cap     — 현재 화면 캡처
+- /interrupt — Ctrl+C
+- /help    — 도움말
 
-일반 텍스트를 입력하면 Claude Code로 전달됩니다."
+[Claude 터미널 보기]
+터미널에서 아래 명령어로 Claude Code 화면을 볼 수 있습니다:
+  tmux attach -t claude
+  (빠져나오기: Ctrl+B, D)"
 ```
 
 ### 6-4. 최종 안내 (단 하나)
@@ -946,11 +949,12 @@ curl -s -X POST "https://api.telegram.org/botBOT_TOKEN/sendMessage" \
 Claude Code 채팅창에 다음 메시지 하나만 출력한다:
 
 ```
-설치 완료! Telegram에 알림을 보냈습니다.
+설치 완료! Telegram에 사용 방법 안내를 보냈습니다.
 
   경로: INSTALL_PATH
   세션: claude (tmux)
 
+Claude Code 터미널 보기:  tmux attach -t claude
 Telegram에서 /start 눌러서 연결 확인해보세요.
 ```
 

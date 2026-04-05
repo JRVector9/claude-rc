@@ -1,8 +1,8 @@
 {
-  "version": "1.6.0",
+  "version": "1.7.0",
   "changes": [
-    "스킬명 telegram-rc → claude-rc로 변경",
-    "Write 도구 대신 bash heredoc 사용 (권한 팝업 제거)",
-    "Telegram 알림에 /start 안내 추가, 오타 수정 (추천), Chat ID 예시 변경"
+    "오타 방지: AskUserQuestion 라벨에 (추천)/(추체) 추가 금지 명시",
+    "설치 완료 Telegram 메시지에 사용 방법 + tmux attach 명령어 추가",
+    "Step 6-1: PATH 포함해 claude 실행, 실행 확인 단계 추가"
   ]
 }
