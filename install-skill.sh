@@ -1,11 +1,11 @@
 #!/bin/bash
 # claude-rc 스킬을 Claude Code에 등록합니다.
-# 사용법: curl -fsSL https://raw.githubusercontent.com/YOUR_ID/claude-rc/main/install-skill.sh | bash
+# 사용법: curl -fsSL https://raw.githubusercontent.com/JRVector9/claude-rc/main/install-skill.sh | bash
 
 set -e
 
 SKILL_DIR="$HOME/.claude/skills/telegram-rc"
-REPO_RAW="https://raw.githubusercontent.com/YOUR_ID/claude-rc/main"
+REPO_RAW="https://raw.githubusercontent.com/JRVector9/claude-rc/main"
 
 echo "=== claude-rc 스킬 설치 ==="
 
