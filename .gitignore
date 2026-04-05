@@ -1,0 +1,8 @@
+.venv/
+logs/
+state/
+config/config.yaml
+/tmp/claude-rc-output.log
+__pycache__/
+*.pyc
+*.plist
