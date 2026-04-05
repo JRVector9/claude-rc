@@ -17,9 +17,6 @@ CLAUDE_PROMPT_RE = re.compile(r'^❯\s*$', re.MULTILINE)
 SESSION_NAME_RE = re.compile(r'^[a-zA-Z0-9_\-]{1,50}$')
 _DANGEROUS_CTRL = re.compile(r'\bC-[dDzZ]\b')
 
-# ANSI escape sequence stripping (CSI + single-char ESC sequences)
-_ANSI_ESC = re.compile(r'\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-
 _NOISE_RE = re.compile(
     r'^(?:'
     r'[✢✳✶✻✽·⏺\s]*'
@@ -181,62 +178,34 @@ class TmuxSession:
             size, tail = self._read_log_tail(log_offset)
             if tail and CLAUDE_PROMPT_RE.search(tail):
                 await asyncio.sleep(0.1)  # brief settle wait
-                return self._extract_from_log(log_offset, sent_text)
+                return self._extract_response(sent_text)
             if size != last_size:
                 last_size = size
                 last_change = time.time()
             elif size > log_offset and (time.time() - last_change) > self.cfg.quiet_seconds:
-                return self._extract_from_log(log_offset, sent_text)
+                return self._extract_response(sent_text)
             if time.time() - start > self.cfg.max_wait_seconds:
-                return self._extract_from_log(log_offset, sent_text) or "(응답 시간 초과)"
+                return self._extract_response(sent_text) or "(응답 시간 초과)"
 
-    def _strip_ansi_to_lines(self, raw: str) -> list[str]:
-        """Strip ANSI escape sequences, handle CR overwrites, split to lines."""
-        cleaned = _ANSI_ESC.sub('', raw)
-        lines = []
-        for line in cleaned.split('\n'):
-            # CR (carriage return) overwrites: keep last written content per line
-            parts = line.split('\r')
-            lines.append(parts[-1])
-        return lines
+    def _find_response_start(self, all_lines: list[str], sent_text: str) -> int:
+        """Search backwards for the ❯ user input line; response starts after it."""
+        sent_stripped = sent_text.strip()
+        for i in range(len(all_lines) - 1, -1, -1):
+            line = all_lines[i].strip()
+            if line.startswith('❯'):
+                after_prompt = line[1:].strip()
+                if after_prompt and (
+                    sent_stripped.startswith(after_prompt)
+                    or after_prompt in sent_stripped
+                ):
+                    return i + 1
+        return max(0, len(all_lines) - 50)
 
-    def _extract_from_log(self, log_offset: int, sent_text: str) -> str:
-        """Extract response by reading log file from offset — no subprocess needed."""
-        try:
-            with open(self.cfg.output_log, 'rb') as f:
-                f.seek(log_offset)
-                raw = f.read().decode('utf-8', errors='replace')
-        except FileNotFoundError:
-            return ""
-        lines = self._strip_ansi_to_lines(raw)
-        lines = self._skip_sent_echo(lines, sent_text)
-        return self._clean_lines(lines)
-
-    def _skip_sent_echo(self, lines: list[str], sent: str) -> list[str]:
-        """Skip lines that are the user's echoed input."""
-        if not sent:
-            return lines
-        remaining = sent
-        result_start = 0
-        for i, line in enumerate(lines):
-            s = line.strip()
-            if s.startswith('❯'):
-                s = s[1:].strip()
-            if not s:
-                result_start = i + 1
-                continue
-            if remaining.startswith(s):
-                remaining = remaining[len(s):].strip()
-                result_start = i + 1
-                if not remaining:
-                    break
-            elif s in remaining:
-                remaining = ''
-                result_start = i + 1
-                break
-            else:
-                break
-        return lines[result_start:]
+    def _extract_response(self, sent_text: str) -> str:
+        """Extract Claude's response using capture_pane (rendered, no ANSI noise)."""
+        all_lines = self.capture_pane(scrollback=500)
+        start_idx = self._find_response_start(all_lines, sent_text)
+        return self._clean_lines(all_lines[start_idx:])
 
     def _clean_lines(self, lines: list[str]) -> str:
         result = []

@@ -1,8 +1,8 @@
 {
-  "version": "1.11.0",
+  "version": "1.11.1",
   "changes": [
-    "성능: capture_pane subprocess 제거 — log 파일 직접 파싱으로 응답 추출",
-    "성능: poll_interval 0.3→0.1, quiet_seconds 2.5→1.5, 프롬프트 감지 후 대기 0.4→0.1",
-    "성능: _capture_anchor subprocess 제거, send-keys 2호출→1스레드 배치"
+    "버그수정: capture_pane 기반 응답 추출로 복구 — 로그파일 ANSI 파싱 방식이 '응답없음' 버그 유발",
+    "버그수정: ❯ 사용자 입력 라인 역방향 검색으로 응답 시작점 탐지",
+    "성능: poll_interval 0.1, quiet_seconds 1.5 유지"
   ]
 }
