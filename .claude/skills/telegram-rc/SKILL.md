@@ -212,33 +212,71 @@ B) 직접 경로 입력
 
 ### 2-2. Telegram 봇 토큰
 
+AskUserQuestion 도구로 묻기 전에, 다음 안내를 텍스트로 출력한다:
+
 ```
-Telegram 봇 토큰을 입력해주세요.
+📱 Telegram 봇 토큰이 필요합니다.
 
-아직 봇이 없다면:
-1. Telegram 앱에서 @BotFather 검색
-2. /newbot 전송
-3. 봇 이름 입력 후 발급받은 토큰 복사
+아직 봇이 없다면 지금 만들어주세요 (2분 소요):
 
-형식 예시: 1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ
+1. Telegram 앱 열기
+2. 검색창에 @BotFather 입력 후 채팅 시작
+3. /newbot 입력 후 전송
+4. 봇 이름 입력 (예: MyClaudeBot)
+5. 봇 사용자 이름 입력 (예: my_claude_bot) — 반드시 _bot으로 끝나야 함
+6. BotFather가 토큰을 발급해줍니다 (숫자:문자열 형식)
+
+토큰 형식 예시: 1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ
+
+준비되면 아래에서 A를 선택 후 Other를 클릭해 토큰을 붙여넣어주세요.
 ```
 
-입력받은 값을 `BOT_TOKEN` 으로 저장한다.
+그 다음 AskUserQuestion 도구로 묻는다:
+
+```
+BotFather에서 받은 토큰을 준비했나요?
+
+RECOMMENDATION: A — Other를 클릭해 토큰을 붙여넣으세요.
+
+A) 토큰 입력 (Other를 클릭해 붙여넣기)
+B) 취소
+```
+
+- **A + Other 텍스트**: 입력값을 `BOT_TOKEN` 으로 저장한다.
+- **B**: 중단
 
 ### 2-3. Telegram Chat ID
 
+AskUserQuestion 도구로 묻기 전에, 다음 안내를 텍스트로 출력한다:
+
 ```
-본인의 Telegram Chat ID를 입력해주세요.
+📱 Telegram Chat ID가 필요합니다.
 
-확인 방법:
-1. Telegram 앱에서 @userinfobot 검색
-2. /start 전송
-3. 표시된 숫자 ID 복사
+확인 방법 (1분 소요):
 
-형식 예시: 7598341229
+1. Telegram 앱 열기
+2. 검색창에 @userinfobot 입력 후 채팅 시작
+3. /start 입력 후 전송
+4. 표시된 숫자가 본인의 Chat ID입니다
+
+Chat ID 형식 예시: 7598341229
+
+준비되면 아래에서 A를 선택 후 Other를 클릭해 Chat ID를 입력해주세요.
 ```
 
-입력받은 값을 `CHAT_ID` (정수) 로 저장한다.
+그 다음 AskUserQuestion 도구로 묻는다:
+
+```
+Chat ID를 준비했나요?
+
+RECOMMENDATION: A — Other를 클릭해 Chat ID를 입력하세요.
+
+A) Chat ID 입력 (Other를 클릭해 입력)
+B) 취소
+```
+
+- **A + Other 텍스트**: 입력값을 `CHAT_ID` (정수) 로 저장한다.
+- **B**: 중단
 
 수집 완료 후 Step 3으로 진행한다.
 
