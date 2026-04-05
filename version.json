@@ -1,7 +1,7 @@
 {
-  "version": "1.8.0",
+  "version": "1.8.1",
   "changes": [
-    "설치 완료 시 iTerm2 새 창에서 tmux 세션 자동 열기",
-    "브릿지는 LaunchAgent 백그라운드, 터미널은 새 창으로 분리"
+    "설치 완료 메시지에 tmux/Claude 구조 및 재시작 방법 추가",
+    "iTerm2 새 창 tmux 세션 자동 열기"
   ]
 }
