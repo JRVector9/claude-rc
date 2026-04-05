@@ -1,8 +1,8 @@
 {
-  "version": "1.2.0",
+  "version": "1.3.0",
   "changes": [
-    "설치 전 기존 설치 감지 — 설정만 업데이트하거나 전체 재설치 선택 가능",
-    "의존성 확인을 1번의 bash로 통합, 각 설치 단계에 RECOMMENDATION 추가",
-    "LaunchAgent 등록 전 설명 화면 추가, 봇 토큰/Chat ID 취득 방법 안내"
+    "봇 토큰/Chat ID 입력 전 BotFather 및 userinfobot 단계별 안내 추가",
+    "의존성 확인 전 팝업 예고 메시지 추가 (Yes/don't ask again 안내)",
+    "토큰 입력 방법을 Other 클릭으로 명확하게 안내"
   ]
 }
