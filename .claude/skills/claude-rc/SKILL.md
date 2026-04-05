@@ -1,6 +1,6 @@
 ---
 name: claude-rc
-version: "1.6.0"
+version: "1.8.0"
 description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿지를 설치하고 설정합니다. 사용자가 텔레그램으로 Claude에게 명령을 보내고 답변을 받을 수 있게 합니다. Triggers on: claude-rc, telegram-rc, 텔레그램 브릿지, telegram bridge, telegram iterm, telegram claude. Use when: user wants to control Claude Code via Telegram, set up telegram bot for iTerm2."
 ---
 
@@ -11,7 +11,7 @@ description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿
 스킬이 시작되면 **가장 먼저** 아래를 실행한다.
 
 ```bash
-CURRENT_VERSION="1.7.1"
+CURRENT_VERSION="1.8.0"
 REMOTE_JSON=$(curl -sf "https://raw.githubusercontent.com/JRVector9/claude-rc/main/version.json" 2>/dev/null || echo "")
 ```
 
@@ -944,7 +944,20 @@ Telegram에서 바로 사용할 수 있습니다.
   (빠져나오기: Ctrl+B, D)"
 ```
 
-### 6-4. 최종 안내 (단 하나)
+### 6-4. iTerm2 새 창에서 tmux 세션 열기
+
+브릿지는 LaunchAgent가 백그라운드에서 관리한다. Claude Code 터미널은 iTerm2 새 창으로 띄워 사용자가 바로 확인할 수 있게 한다:
+
+```bash
+osascript << 'SCRIPT'
+tell application "iTerm2"
+    activate
+    create window with default profile command "tmux attach -t claude"
+end tell
+SCRIPT
+```
+
+### 6-5. 최종 안내 (단 하나)
 
 Claude Code 채팅창에 다음 메시지 하나만 출력한다:
 
@@ -952,9 +965,9 @@ Claude Code 채팅창에 다음 메시지 하나만 출력한다:
 설치 완료! Telegram에 사용 방법 안내를 보냈습니다.
 
   경로: INSTALL_PATH
-  세션: claude (tmux)
+  세션: claude (tmux)   ← 방금 새 창으로 열렸습니다
+  브릿지: 백그라운드 실행 중 (LaunchAgent)
 
-Claude Code 터미널 보기:  tmux attach -t claude
 Telegram에서 /start 눌러서 연결 확인해보세요.
 ```
 
