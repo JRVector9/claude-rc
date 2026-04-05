@@ -704,7 +704,7 @@ class TelegramBot:
             await update.message.reply_text(f"[{text}] 전송됨", reply_markup=SHORTCUT_KEYBOARD)
             return
 
-        thinking_msg = await update.message.reply_text("waiting...", reply_markup=SHORTCUT_KEYBOARD)
+        thinking_msg = await update.message.reply_text("typing...", reply_markup=SHORTCUT_KEYBOARD)
         try:
             log_offset, anchor = await self.session.send(text)
             response = await self.session.wait_for_response(log_offset, anchor)

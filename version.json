@@ -1,8 +1,7 @@
 {
-  "version": "1.7.0",
+  "version": "1.7.1",
   "changes": [
-    "오타 방지: AskUserQuestion 라벨에 (추천)/(추체) 추가 금지 명시",
-    "설치 완료 Telegram 메시지에 사용 방법 + tmux attach 명령어 추가",
-    "Step 6-1: PATH 포함해 claude 실행, 실행 확인 단계 추가"
+    "waiting... → typing... 으로 변경",
+    "추체 오타 방지, tmux PATH 수정, 완료 메시지에 사용 방법 추가"
   ]
 }
