@@ -159,8 +159,8 @@ class TelegramBot:
 
         thinking_msg = await update.message.reply_text("typing...", reply_markup=SHORTCUT_KEYBOARD)
         try:
-            log_offset, anchor, sent_text = await self.session.send(text)
-            response = await self.session.wait_for_response(log_offset, anchor, sent_text)
+            log_offset, sent_text = await self.session.send(text)
+            response = await self.session.wait_for_response(log_offset, sent_text)
         except Exception as e:
             logger.exception("session error")
             await thinking_msg.edit_text("오류가 발생했습니다. 로그를 확인하세요.")

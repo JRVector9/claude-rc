@@ -314,9 +314,9 @@ tmux:
 
 bridge:
   output_log: "/tmp/claude-rc-output.log"
-  quiet_seconds: 2.5
+  quiet_seconds: 1.5
   max_wait_seconds: 120
-  poll_interval: 0.3
+  poll_interval: 0.1
 
 logging:
   level: "INFO"
@@ -354,6 +354,9 @@ logger = logging.getLogger(__name__)
 CLAUDE_PROMPT_RE = re.compile(r'^❯\s*$', re.MULTILINE)
 SESSION_NAME_RE = re.compile(r'^[a-zA-Z0-9_\-]{1,50}$')
 _DANGEROUS_CTRL = re.compile(r'\bC-[dDzZ]\b')
+
+# ANSI escape sequence stripping (CSI + single-char ESC sequences)
+_ANSI_ESC = re.compile(r'\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 _NOISE_RE = re.compile(
     r'^(?:'
@@ -470,19 +473,16 @@ class TmuxSession:
         )
         return r.stdout.splitlines()
 
-    def _capture_anchor(self) -> str:
-        lines = self.capture_pane(scrollback=100)
-        for line in reversed(lines):
-            s = line.strip()
-            if s and not _NOISE_RE.match(s) and not _STATUS_RE.search(s):
-                return s
-        return "__START__"
-
     def capture_screenshot(self) -> str:
         lines = self.capture_pane(scrollback=200)
         return '\n'.join(lines).strip()
 
-    async def send(self, text: str) -> tuple[int, str, str]:
+    def _send_text_blocking(self, text: str):
+        """Send text literally then Enter — both in one thread call."""
+        subprocess.run(['tmux', 'send-keys', '-t', self.active_session, '-l', text])
+        subprocess.run(['tmux', 'send-keys', '-t', self.active_session, 'Enter'])
+
+    async def send(self, text: str) -> tuple[int, str]:
         if _DANGEROUS_CTRL.search(text):
             raise ValueError("허용되지 않은 제어 문자입니다.")
         sent = text.strip()
@@ -490,18 +490,10 @@ class TmuxSession:
             await asyncio.to_thread(self.ensure_session)
             if not self._pipe_active:
                 await asyncio.to_thread(self.start_pipe)
-            anchor = await asyncio.to_thread(self._capture_anchor)
             log_offset = self._log_size()
-            # -l sends text literally, preventing tmux key name interpretation
-            await asyncio.to_thread(
-                subprocess.run,
-                ['tmux', 'send-keys', '-t', self.active_session, '-l', text]
-            )
-            await asyncio.to_thread(
-                subprocess.run,
-                ['tmux', 'send-keys', '-t', self.active_session, 'Enter']
-            )
-        return log_offset, anchor, sent
+            # -l sends text literally; both calls batched in one thread
+            await asyncio.to_thread(self._send_text_blocking, text)
+        return log_offset, sent
 
     async def send_key(self, key: str):
         async with self.lock:
@@ -518,7 +510,7 @@ class TmuxSession:
                 ['tmux', 'send-keys', '-t', self.active_session, 'C-c']
             )
 
-    async def wait_for_response(self, log_offset: int, anchor: str, sent_text: str) -> str:
+    async def wait_for_response(self, log_offset: int, sent_text: str) -> str:
         start = time.time()
         last_size = log_offset
         last_change = time.time()
@@ -526,29 +518,37 @@ class TmuxSession:
             await asyncio.sleep(self.cfg.poll_interval)
             size, tail = self._read_log_tail(log_offset)
             if tail and CLAUDE_PROMPT_RE.search(tail):
-                await asyncio.sleep(0.4)
-                return self._extract_response(anchor, sent_text)
+                await asyncio.sleep(0.1)  # brief settle wait
+                return self._extract_from_log(log_offset, sent_text)
             if size != last_size:
                 last_size = size
                 last_change = time.time()
             elif size > log_offset and (time.time() - last_change) > self.cfg.quiet_seconds:
-                return self._extract_response(anchor, sent_text)
+                return self._extract_from_log(log_offset, sent_text)
             if time.time() - start > self.cfg.max_wait_seconds:
-                return self._extract_response(anchor, sent_text) or "(응답 시간 초과)"
+                return self._extract_from_log(log_offset, sent_text) or "(응답 시간 초과)"
 
-    def _extract_response(self, anchor: str, sent_text: str) -> str:
-        all_lines = self.capture_pane(scrollback=500)
-        if anchor == "__START__":
-            new_lines = all_lines
-        else:
-            anchor_idx = -1
-            for i in range(len(all_lines) - 1, -1, -1):
-                if all_lines[i].strip() == anchor:
-                    anchor_idx = i
-                    break
-            new_lines = all_lines[anchor_idx + 1:] if anchor_idx >= 0 else all_lines[-50:]
-        new_lines = self._skip_sent_echo(new_lines, sent_text)
-        return self._clean_lines(new_lines)
+    def _strip_ansi_to_lines(self, raw: str) -> list[str]:
+        """Strip ANSI escape sequences, handle CR overwrites, split to lines."""
+        cleaned = _ANSI_ESC.sub('', raw)
+        lines = []
+        for line in cleaned.split('\n'):
+            # CR (carriage return) overwrites: keep last written content per line
+            parts = line.split('\r')
+            lines.append(parts[-1])
+        return lines
+
+    def _extract_from_log(self, log_offset: int, sent_text: str) -> str:
+        """Extract response by reading log file from offset — no subprocess needed."""
+        try:
+            with open(self.cfg.output_log, 'rb') as f:
+                f.seek(log_offset)
+                raw = f.read().decode('utf-8', errors='replace')
+        except FileNotFoundError:
+            return ""
+        lines = self._strip_ansi_to_lines(raw)
+        lines = self._skip_sent_echo(lines, sent_text)
+        return self._clean_lines(lines)
 
     def _skip_sent_echo(self, lines: list[str], sent: str) -> list[str]:
         """Skip lines that are the user's echoed input."""
@@ -779,8 +779,8 @@ class TelegramBot:
 
         thinking_msg = await update.message.reply_text("typing...", reply_markup=SHORTCUT_KEYBOARD)
         try:
-            log_offset, anchor, sent_text = await self.session.send(text)
-            response = await self.session.wait_for_response(log_offset, anchor, sent_text)
+            log_offset, sent_text = await self.session.send(text)
+            response = await self.session.wait_for_response(log_offset, sent_text)
         except Exception as e:
             logger.exception("session error")
             await thinking_msg.edit_text("오류가 발생했습니다. 로그를 확인하세요.")

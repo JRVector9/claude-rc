@@ -1,9 +1,8 @@
 {
-  "version": "1.10.0",
+  "version": "1.11.0",
   "changes": [
-    "보안: pipe-pane 경로 shlex.quote 적용, 세션명 검증, C-d/C-z 제어문자 차단",
-    "안정성: switch_to() lock 추가(race condition), start_pipe() 실패 감지, 세션 재생성 시 로그 초기화",
-    "성능: asyncio.to_thread로 블로킹 subprocess 해소, 로그 tail 읽기 최적화",
-    "품질: sent_text 파라미터화(race condition), pipe_active 프로퍼티, DRY 개선"
+    "성능: capture_pane subprocess 제거 — log 파일 직접 파싱으로 응답 추출",
+    "성능: poll_interval 0.3→0.1, quiet_seconds 2.5→1.5, 프롬프트 감지 후 대기 0.4→0.1",
+    "성능: _capture_anchor subprocess 제거, send-keys 2호출→1스레드 배치"
   ]
 }
