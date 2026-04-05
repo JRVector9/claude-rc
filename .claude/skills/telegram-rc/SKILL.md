@@ -19,16 +19,63 @@ Claude Code 출력 → tmux capture-pane → 브릿지 → Telegram 답장
 
 ---
 
-## Step 1: 사전 확인
+## Step 1: 의존성 확인 및 설치
 
-다음 명령어를 실행해서 환경을 확인한다:
+아래 순서로 각 도구를 확인하고, 없으면 사용자에게 설치 여부를 묻는다.
+
+### 1-1. Homebrew 확인
 
 ```bash
-command -v tmux && echo "tmux OK" || echo "tmux 없음 — brew install tmux"
-command -v python3 && python3 --version
+command -v brew && echo "brew OK" || echo "NOT_FOUND"
 ```
 
-tmux가 없으면 설치를 안내하고 중단한다.
+brew가 없으면:
+> "Homebrew가 설치되어 있지 않습니다. tmux와 Python 설치에 필요합니다.
+> 설치하겠습니까? (yes / no)"
+
+- **yes**: 아래 명령 실행
+  ```bash
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  ```
+  완료 후 다음 단계로 진행.
+- **no**: "Homebrew 없이는 자동 설치가 어렵습니다. https://brew.sh 에서 수동 설치 후 다시 실행해주세요." 안내하고 중단.
+
+### 1-2. tmux 확인
+
+```bash
+command -v tmux && tmux -V || echo "NOT_FOUND"
+```
+
+tmux가 없으면:
+> "tmux가 설치되어 있지 않습니다. tmux는 터미널 세션 관리에 필요합니다.
+> 설치하겠습니까? (yes / no)"
+
+- **yes**: 실행
+  ```bash
+  brew install tmux
+  ```
+  설치 완료 후 `tmux -V` 로 확인하고 다음 단계로 진행.
+- **no**: "tmux 없이는 브릿지를 실행할 수 없습니다." 안내하고 중단.
+
+### 1-3. Python 3.8+ 확인
+
+```bash
+python3 --version 2>/dev/null || echo "NOT_FOUND"
+```
+
+Python이 없거나 3.8 미만이면:
+> "Python 3.8 이상이 설치되어 있지 않습니다.
+> 설치하겠습니까? (yes / no)"
+
+- **yes**: 실행
+  ```bash
+  brew install python3
+  ```
+  완료 후 `python3 --version` 으로 확인하고 다음 단계로 진행.
+- **no**: "Python 없이는 브릿지를 실행할 수 없습니다." 안내하고 중단.
+
+세 가지가 모두 확인되면:
+> "✅ 환경 확인 완료: brew, tmux, Python 모두 준비됐습니다."
 
 ---
 
