@@ -11,25 +11,23 @@ logger = logging.getLogger(__name__)
 
 MAX_MSG_LEN = 4096
 
-# 단축 키보드 (y/n/tab/방향키 제외)
 SHORTCUT_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton("1"), KeyboardButton("2"),
          KeyboardButton("3"), KeyboardButton("4")],
-        [KeyboardButton("↵ Enter"), KeyboardButton("↑"), KeyboardButton("↓"), KeyboardButton("⎋ Esc")],
-        [KeyboardButton("📺 /cap")],
+        [KeyboardButton("↵ Enter"), KeyboardButton("↑"),
+         KeyboardButton("↓"), KeyboardButton("⎋ Esc")],
+        [KeyboardButton("/cap"), KeyboardButton("/sessions")],
     ],
     resize_keyboard=True,
     one_time_keyboard=False,
 )
 
-# 버튼 → tmux send-keys 매핑
 KEY_MAP = {
     "↵ Enter": "Enter",
     "↑":       "Up",
     "↓":       "Down",
     "⎋ Esc":   "Escape",
-    "📺 /cap":  None,   # 별도 처리
 }
 
 
@@ -45,6 +43,7 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("start",     self._cmd_start))
         self.app.add_handler(CommandHandler("status",    self._cmd_status))
         self.app.add_handler(CommandHandler("sessions",  self._cmd_sessions))
+        self.app.add_handler(CommandHandler("switch",    self._cmd_switch))
         self.app.add_handler(CommandHandler("interrupt", self._cmd_interrupt))
         self.app.add_handler(CommandHandler("cap",       self._cmd_cap))
         self.app.add_handler(CommandHandler("help",      self._cmd_help))
@@ -56,10 +55,6 @@ class TelegramBot:
     def run(self):
         self.app.run_polling(drop_pending_updates=True)
 
-    # ------------------------------------------------------------------
-    # Auth
-    # ------------------------------------------------------------------
-
     def _is_allowed(self, update: Update) -> bool:
         return update.effective_chat.id in self.allowed_chat_ids
 
@@ -67,14 +62,10 @@ class TelegramBot:
         await update.message.reply_text("Unauthorized.")
         logger.warning("Rejected chat_id=%s", update.effective_chat.id)
 
-    # ------------------------------------------------------------------
-    # Commands
-    # ------------------------------------------------------------------
-
     async def _cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_allowed(update): return await self._reject(update)
         await update.message.reply_text(
-            "claude-rc 연결됨.\n"
+            f"claude-rc 연결됨.\n현재 세션: {self.session.active_session}\n"
             "메시지를 보내면 Claude Code로 전달됩니다.",
             reply_markup=SHORTCUT_KEYBOARD,
         )
@@ -84,8 +75,9 @@ class TelegramBot:
         exists = self.session.session_exists()
         pipe   = self.session._pipe_active
         await update.message.reply_text(
-            f"tmux 세션: {'✅ 실행 중' if exists else '❌ 없음'}\n"
-            f"출력 파이프: {'✅ 연결됨' if pipe else '❌ 끊김'}",
+            f"현재 세션: {self.session.active_session}\n"
+            f"tmux 세션: {'실행 중' if exists else '없음'}\n"
+            f"출력 파이프: {'연결됨' if pipe else '끊김'}",
             reply_markup=SHORTCUT_KEYBOARD,
         )
 
@@ -96,10 +88,35 @@ class TelegramBot:
             return await update.message.reply_text("실행 중인 tmux 세션 없음")
         lines = []
         for s in sessions:
-            attached = "👁 연결됨" if s['attached'] else "분리됨"
-            target   = " ← 현재" if s['name'] == self.session.cfg.session_name else ""
-            lines.append(f"• {s['name']}  windows:{s['windows']}  {attached}{target}")
+            attached = "연결됨" if s['attached'] else "분리됨"
+            active   = " ← 현재" if s['name'] == self.session.active_session else ""
+            lines.append(f"• {s['name']}  windows:{s['windows']}  {attached}{active}")
+        lines.append("\n전환: /switch <세션명>")
         await update.message.reply_text("\n".join(lines), reply_markup=SHORTCUT_KEYBOARD)
+
+    async def _cmd_switch(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not self._is_allowed(update): return await self._reject(update)
+        args = ctx.args
+        if not args:
+            sessions = self.session.list_sessions()
+            names = [s['name'] for s in sessions]
+            return await update.message.reply_text(
+                f"사용법: /switch <세션명>\n사용 가능: {', '.join(names) if names else '없음'}",
+                reply_markup=SHORTCUT_KEYBOARD,
+            )
+        target = args[0]
+        if self.session.switch_to(target):
+            await update.message.reply_text(
+                f"세션 전환 완료: {target}",
+                reply_markup=SHORTCUT_KEYBOARD,
+            )
+        else:
+            sessions = self.session.list_sessions()
+            names = [s['name'] for s in sessions]
+            await update.message.reply_text(
+                f"세션 없음: {target}\n사용 가능: {', '.join(names) if names else '없음'}",
+                reply_markup=SHORTCUT_KEYBOARD,
+            )
 
     async def _cmd_interrupt(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_allowed(update): return await self._reject(update)
@@ -112,17 +129,15 @@ class TelegramBot:
         if not screen:
             return await update.message.reply_text("(화면 비어있음)")
         for chunk in _split(screen, MAX_MSG_LEN):
-            await update.message.reply_text(
-                f"```\n{chunk}\n```",
-                parse_mode="Markdown",
-                reply_markup=SHORTCUT_KEYBOARD,
-            )
+            await update.message.reply_text(chunk, reply_markup=SHORTCUT_KEYBOARD)
 
     async def _cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_allowed(update): return await self._reject(update)
         await update.message.reply_text(
+            f"현재 세션: {self.session.active_session}\n\n"
             "/status     — 브릿지 상태\n"
             "/sessions   — tmux 세션 목록\n"
+            "/switch <명> — 세션 전환\n"
             "/interrupt  — Ctrl+C\n"
             "/cap        — 현재 화면 캡처\n"
             "/help       — 이 메시지\n\n"
@@ -130,62 +145,40 @@ class TelegramBot:
             reply_markup=SHORTCUT_KEYBOARD,
         )
 
-    # ------------------------------------------------------------------
-    # Message → Claude or special key
-    # ------------------------------------------------------------------
-
     async def _handle_message(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_allowed(update): return await self._reject(update)
-
         text = update.message.text.strip()
         if not text:
             return
 
-        # 📺 /cap 버튼
-        if text == "📺 /cap":
-            return await self._cmd_cap(update, ctx)
-
-        # 특수 키 버튼 (Enter / Esc)
         if text in KEY_MAP:
             key = KEY_MAP[text]
             if key:
                 await self.session.send_key(key)
-                await update.message.reply_text(
-                    f"[{text}] 전송됨", reply_markup=SHORTCUT_KEYBOARD
-                )
+                await update.message.reply_text(f"[{text}] 전송됨", reply_markup=SHORTCUT_KEYBOARD)
             return
 
-        # 숫자 1-4: 그대로 입력
         if text in ("1", "2", "3", "4"):
             await self.session.send_key(text)
-            await update.message.reply_text(
-                f"[{text}] 전송됨", reply_markup=SHORTCUT_KEYBOARD
-            )
+            await update.message.reply_text(f"[{text}] 전송됨", reply_markup=SHORTCUT_KEYBOARD)
             return
 
-        # 일반 텍스트 → Claude
-        thinking_msg = await update.message.reply_text(
-            "⏳", reply_markup=SHORTCUT_KEYBOARD
-        )
-
+        thinking_msg = await update.message.reply_text("typing...", reply_markup=SHORTCUT_KEYBOARD)
         try:
-            log_offset, lines_before = await self.session.send(text)
-            response = await self.session.wait_for_response(log_offset, lines_before)
+            log_offset, anchor = await self.session.send(text)
+            response = await self.session.wait_for_response(log_offset, anchor)
         except Exception as e:
             logger.exception("session error")
             await thinking_msg.edit_text(f"오류: {e}")
             return
 
         await thinking_msg.delete()
-
         if not response:
             await update.message.reply_text("(응답 없음)", reply_markup=SHORTCUT_KEYBOARD)
             return
-
         for chunk in _split(response, MAX_MSG_LEN):
             await update.message.reply_text(
-                f"```\n{chunk}\n```",
-                parse_mode="Markdown",
+                f"```\n{chunk}\n```", parse_mode="Markdown",
                 reply_markup=SHORTCUT_KEYBOARD,
             )
 

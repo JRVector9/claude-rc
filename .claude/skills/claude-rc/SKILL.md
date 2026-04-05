@@ -1,6 +1,6 @@
 ---
 name: claude-rc
-version: "1.8.3"
+version: "1.9.0"
 description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿지를 설치하고 설정합니다. 사용자가 텔레그램으로 Claude에게 명령을 보내고 답변을 받을 수 있게 합니다. Triggers on: claude-rc, telegram-rc, 텔레그램 브릿지, telegram bridge, telegram iterm, telegram claude. Use when: user wants to control Claude Code via Telegram, set up telegram bot for iTerm2."
 ---
 
@@ -11,7 +11,7 @@ description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿
 스킬이 시작되면 **가장 먼저** 아래를 실행한다.
 
 ```bash
-CURRENT_VERSION="1.8.3"
+CURRENT_VERSION="1.9.0"
 REMOTE_JSON=$(curl -sf "https://raw.githubusercontent.com/JRVector9/claude-rc/main/version.json" 2>/dev/null || echo "")
 ```
 
@@ -380,18 +380,32 @@ class SessionConfig:
 class TmuxSession:
     def __init__(self, cfg: SessionConfig):
         self.cfg = cfg
+        self.active_session = cfg.session_name
         self.lock = asyncio.Lock()
         self._pipe_active = False
         self._last_sent_text = ''
 
+    def switch_to(self, session_name: str) -> bool:
+        """Switch active session. Returns True if session exists."""
+        r = subprocess.run(['tmux', 'has-session', '-t', session_name], capture_output=True)
+        if r.returncode != 0:
+            return False
+        # Stop pipe on old session
+        if self._pipe_active:
+            subprocess.run(['tmux', 'pipe-pane', '-t', self.active_session], capture_output=True)
+            self._pipe_active = False
+        self.active_session = session_name
+        self._last_sent_text = ''
+        return True
+
     def session_exists(self) -> bool:
-        r = subprocess.run(['tmux', 'has-session', '-t', self.cfg.session_name],
+        r = subprocess.run(['tmux', 'has-session', '-t', self.active_session],
                            capture_output=True)
         return r.returncode == 0
 
     def create_session(self):
         subprocess.run([
-            'tmux', 'new-session', '-d', '-s', self.cfg.session_name,
+            'tmux', 'new-session', '-d', '-s', self.active_session,
             '-x', '220', '-y', '50'
         ], check=True)
 
@@ -402,7 +416,7 @@ class TmuxSession:
     def start_pipe(self):
         Path(self.cfg.output_log).touch()
         subprocess.run([
-            'tmux', 'pipe-pane', '-t', self.cfg.session_name,
+            'tmux', 'pipe-pane', '-t', self.active_session,
             f'cat >> {self.cfg.output_log}'
         ])
         self._pipe_active = True
@@ -425,7 +439,7 @@ class TmuxSession:
 
     def capture_pane(self, scrollback: int = 500) -> list[str]:
         r = subprocess.run(
-            ['tmux', 'capture-pane', '-t', self.cfg.session_name,
+            ['tmux', 'capture-pane', '-t', self.active_session,
              '-p', '-S', f'-{scrollback}'],
             capture_output=True, text=True
         )
@@ -452,18 +466,18 @@ class TmuxSession:
             log_offset = self._log_size()
             self._last_sent_text = text.strip()
             subprocess.run([
-                'tmux', 'send-keys', '-t', self.cfg.session_name, text, 'Enter'
+                'tmux', 'send-keys', '-t', self.active_session, text, 'Enter'
             ])
             return log_offset, anchor
 
     async def send_key(self, key: str):
         async with self.lock:
             self.ensure_session()
-            subprocess.run(['tmux', 'send-keys', '-t', self.cfg.session_name, key])
+            subprocess.run(['tmux', 'send-keys', '-t', self.active_session, key])
 
     async def send_interrupt(self):
         async with self.lock:
-            subprocess.run(['tmux', 'send-keys', '-t', self.cfg.session_name, 'C-c'])
+            subprocess.run(['tmux', 'send-keys', '-t', self.active_session, 'C-c'])
 
     async def wait_for_response(self, log_offset: int, anchor: str) -> str:
         start = time.time()
@@ -559,6 +573,7 @@ class TmuxSession:
                 return f.read().decode('utf-8', errors='replace')
         except FileNotFoundError:
             return ""
+
 ```
 
 ---
@@ -585,7 +600,7 @@ SHORTCUT_KEYBOARD = ReplyKeyboardMarkup(
          KeyboardButton("3"), KeyboardButton("4")],
         [KeyboardButton("↵ Enter"), KeyboardButton("↑"),
          KeyboardButton("↓"), KeyboardButton("⎋ Esc")],
-        [KeyboardButton("/cap")],
+        [KeyboardButton("/cap"), KeyboardButton("/sessions")],
     ],
     resize_keyboard=True,
     one_time_keyboard=False,
@@ -611,6 +626,7 @@ class TelegramBot:
         self.app.add_handler(CommandHandler("start",     self._cmd_start))
         self.app.add_handler(CommandHandler("status",    self._cmd_status))
         self.app.add_handler(CommandHandler("sessions",  self._cmd_sessions))
+        self.app.add_handler(CommandHandler("switch",    self._cmd_switch))
         self.app.add_handler(CommandHandler("interrupt", self._cmd_interrupt))
         self.app.add_handler(CommandHandler("cap",       self._cmd_cap))
         self.app.add_handler(CommandHandler("help",      self._cmd_help))
@@ -632,7 +648,8 @@ class TelegramBot:
     async def _cmd_start(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_allowed(update): return await self._reject(update)
         await update.message.reply_text(
-            "claude-rc 연결됨.\n메시지를 보내면 Claude Code로 전달됩니다.",
+            f"claude-rc 연결됨.\n현재 세션: {self.session.active_session}\n"
+            "메시지를 보내면 Claude Code로 전달됩니다.",
             reply_markup=SHORTCUT_KEYBOARD,
         )
 
@@ -641,6 +658,7 @@ class TelegramBot:
         exists = self.session.session_exists()
         pipe   = self.session._pipe_active
         await update.message.reply_text(
+            f"현재 세션: {self.session.active_session}\n"
             f"tmux 세션: {'실행 중' if exists else '없음'}\n"
             f"출력 파이프: {'연결됨' if pipe else '끊김'}",
             reply_markup=SHORTCUT_KEYBOARD,
@@ -654,9 +672,34 @@ class TelegramBot:
         lines = []
         for s in sessions:
             attached = "연결됨" if s['attached'] else "분리됨"
-            target   = " ← 현재" if s['name'] == self.session.cfg.session_name else ""
-            lines.append(f"• {s['name']}  windows:{s['windows']}  {attached}{target}")
+            active   = " ← 현재" if s['name'] == self.session.active_session else ""
+            lines.append(f"• {s['name']}  windows:{s['windows']}  {attached}{active}")
+        lines.append("\n전환: /switch <세션명>")
         await update.message.reply_text("\n".join(lines), reply_markup=SHORTCUT_KEYBOARD)
+
+    async def _cmd_switch(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not self._is_allowed(update): return await self._reject(update)
+        args = ctx.args
+        if not args:
+            sessions = self.session.list_sessions()
+            names = [s['name'] for s in sessions]
+            return await update.message.reply_text(
+                f"사용법: /switch <세션명>\n사용 가능: {', '.join(names) if names else '없음'}",
+                reply_markup=SHORTCUT_KEYBOARD,
+            )
+        target = args[0]
+        if self.session.switch_to(target):
+            await update.message.reply_text(
+                f"세션 전환 완료: {target}",
+                reply_markup=SHORTCUT_KEYBOARD,
+            )
+        else:
+            sessions = self.session.list_sessions()
+            names = [s['name'] for s in sessions]
+            await update.message.reply_text(
+                f"세션 없음: {target}\n사용 가능: {', '.join(names) if names else '없음'}",
+                reply_markup=SHORTCUT_KEYBOARD,
+            )
 
     async def _cmd_interrupt(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_allowed(update): return await self._reject(update)
@@ -669,16 +712,15 @@ class TelegramBot:
         if not screen:
             return await update.message.reply_text("(화면 비어있음)")
         for chunk in _split(screen, MAX_MSG_LEN):
-            await update.message.reply_text(
-                chunk,
-                reply_markup=SHORTCUT_KEYBOARD,
-            )
+            await update.message.reply_text(chunk, reply_markup=SHORTCUT_KEYBOARD)
 
     async def _cmd_help(self, update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if not self._is_allowed(update): return await self._reject(update)
         await update.message.reply_text(
+            f"현재 세션: {self.session.active_session}\n\n"
             "/status     — 브릿지 상태\n"
             "/sessions   — tmux 세션 목록\n"
+            "/switch <명> — 세션 전환\n"
             "/interrupt  — Ctrl+C\n"
             "/cap        — 현재 화면 캡처\n"
             "/help       — 이 메시지\n\n"

@@ -1,6 +1,7 @@
 {
-  "version": "1.8.3",
+  "version": "1.9.0",
   "changes": [
-    "완료 메시지 tmux 안내 개선: attach/new 구분 명확화"
+    "멀티세션 지원: /switch <세션명>으로 런타임 전환",
+    "/sessions 버튼 키보드 추가, 현재 세션 표시"
   ]
 }
