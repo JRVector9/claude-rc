@@ -1,0 +1,8 @@
+{
+  "version": "1.1.0",
+  "changes": [
+    "tmux / Python 없을 시 설치 자동 안내 (brew install 포함)",
+    "설치 완료 후 Telegram으로 완료 메시지 자동 발송",
+    "LaunchAgent RunAtLoad=true 설정으로 재부팅 시 자동 시작"
+  ]
+}

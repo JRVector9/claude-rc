@@ -1,9 +1,64 @@
 ---
 name: telegram-rc
+version: "1.1.0"
 description: "Telegram과 Claude Code(iTerm2 tmux 세션)를 연결하는 브릿지를 설치하고 설정합니다. 사용자가 텔레그램으로 Claude에게 명령을 보내고 답변을 받을 수 있게 합니다. Triggers on: telegram-rc, 텔레그램 브릿지, telegram bridge, telegram iterm, telegram claude. Use when: user wants to control Claude Code via Telegram, set up telegram bot for iTerm2."
 ---
 
 # /telegram-rc — Telegram ↔ Claude Code Bridge 설치 스킬
+
+## Step 0: 업데이트 확인
+
+스킬이 시작되면 **가장 먼저** 아래를 실행한다.
+
+```bash
+CURRENT_VERSION="1.1.0"
+REMOTE_JSON=$(curl -sf "https://raw.githubusercontent.com/JRVector9/claude-rc/main/version.json" 2>/dev/null || echo "")
+```
+
+`REMOTE_JSON`이 비어있으면 (네트워크 오류 등) 업데이트 확인을 건너뛰고 Step 1로 진행한다.
+
+`REMOTE_JSON`이 있으면 아래를 실행해 버전을 비교한다:
+
+```bash
+REMOTE_VERSION=$(echo "$REMOTE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['version'])" 2>/dev/null || echo "")
+```
+
+`REMOTE_VERSION == CURRENT_VERSION` 이거나 비어있으면 건너뛰고 Step 1로 진행한다.
+
+`REMOTE_VERSION != CURRENT_VERSION` 이면 업데이트가 있다는 뜻이다. 변경사항 3개를 추출한다:
+
+```bash
+CHANGES=$(echo "$REMOTE_JSON" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+for i, c in enumerate(d.get('changes', [])[:3], 1):
+    print(f'{i}. {c}')
+" 2>/dev/null || echo "")
+```
+
+그런 다음 AskUserQuestion 도구로 묻는다:
+
+```
+telegram-rc 새 버전이 있습니다! (현재: CURRENT_VERSION → 최신: REMOTE_VERSION)
+
+업데이트 내용:
+CHANGES
+
+A) 업데이트 — 최신 스킬로 교체 후 재시작
+B) 건너뛰기 — 현재 버전으로 계속 진행
+```
+
+- **A 선택 시**: 아래를 실행한다
+  ```bash
+  curl -fsSL "https://raw.githubusercontent.com/JRVector9/claude-rc/main/.claude/skills/telegram-rc/SKILL.md" \
+    -o ~/.claude/skills/telegram-rc/SKILL.md
+  ```
+  완료 후 다음 메시지를 출력하고 **종료**한다:
+  > "✅ 스킬이 업데이트됐습니다. `/telegram-rc` 를 다시 실행해주세요."
+
+- **B 선택 시**: 그대로 Step 1로 진행한다.
+
+---
 
 ## Overview
 
