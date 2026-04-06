@@ -29,8 +29,8 @@ _ANSI_ESC = re.compile(
 
 _NOISE_RE = re.compile(
     r'^(?:'
-    r'[✢✳✶✻✽·⏺⏵\s]*'
-    r'|[─═─]{3,}'
+    r'[✢✳✶✻✽·⏺⏵✦\s]*'           # 스피너 + Eave ✦ 문자들
+    r'|[─═\-]{3,}'                 # 구분선 (--- 포함)
     r'|esc\s*to\s*interrupt'
     r'|\?\s*for\s*shortcuts'
     r'|❯\s*.*'
@@ -39,17 +39,21 @@ _NOISE_RE = re.compile(
     r'|.*shift\+tab.*'
     r'|\(✦\).*'
     r'|.*\bEave\b.*'
+    r'|/\\\s*/\\'                  # /\ /\ (Eave 상단)
+    r'|\(\(.*\)\)'                 # ((✦)(✦)) 등
+    r'|\*[^*]+\*'                  # *ruffles feathers* 등
+    r'|[-`.\u00b4]{1,4}'          # -, --, .., `´ 단독 잔재
     r')$',
     re.IGNORECASE
 )
 
 _STATUS_RE = re.compile(
-    r'Elucidating|Actualizing|Thinking|thinking with|Musing|Pondering|'
-    r'running stop hook|stop hook',
+    r'Elucidating|Actualizing|Actioning|Thinking|thinking with|'
+    r'Musing|Pondering|running stop hook|stop hook',
     re.IGNORECASE
 )
 
-_SPINNER_CHARS = re.compile(r'[✢✳✶✻✽⏺]')
+_SPINNER_CHARS = re.compile(r'[✢✳✶✻✽⏺✦]')
 
 
 @dataclass
