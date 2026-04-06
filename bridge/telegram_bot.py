@@ -13,8 +13,8 @@ MAX_MSG_LEN = 4096
 
 SHORTCUT_KEYBOARD = ReplyKeyboardMarkup(
     keyboard=[
-        [KeyboardButton("1"), KeyboardButton("2"),
-         KeyboardButton("3"), KeyboardButton("4")],
+        [KeyboardButton("1"), KeyboardButton("2"), KeyboardButton("3"),
+         KeyboardButton("4"), KeyboardButton("5")],
         [KeyboardButton("↵ Enter"), KeyboardButton("↑"),
          KeyboardButton("↓"), KeyboardButton("⎋ Esc")],
         [KeyboardButton("/cap"), KeyboardButton("/sessions")],
@@ -28,7 +28,7 @@ KEY_MAP = {
     "↑":       "Up",
     "↓":       "Down",
     "⎋ Esc":   "Escape",
-    "1": "1", "2": "2", "3": "3", "4": "4",
+    "1": "1", "2": "2", "3": "3", "4": "4", "5": "5",
 }
 
 
