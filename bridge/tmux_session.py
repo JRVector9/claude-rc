@@ -30,7 +30,7 @@ _ANSI_ESC = re.compile(
 _NOISE_RE = re.compile(
     r'^(?:'
     r'[✢✳✶✻✽·⏺⏵✦\s]*'           # 스피너 + Eave ✦ 문자들
-    r'|[─═\-]{3,}'                 # 구분선 (--- 포함)
+    r'|[─═\-]{3,}.*'               # 구분선 + 우측 Eave 잔재 허용
     r'|esc\s*to\s*interrupt'
     r'|\?\s*for\s*shortcuts'
     r'|❯\s*.*'
@@ -42,7 +42,7 @@ _NOISE_RE = re.compile(
     r'|/\\\s*/\\'                  # /\ /\ (Eave 상단)
     r'|\(\(.*\)\)'                 # ((✦)(✦)) 등
     r'|\*[^*]+\*'                  # *ruffles feathers* 등
-    r'|[-`.\u00b4]{1,4}'          # -, --, .., `´ 단독 잔재
+    r'|[-`.\u00b4]+'               # -, --, .., `----´ 등 단독 잔재 (길이 무제한)
     r'|\(.*><.*\)'                 # ( >< ) Eave 발
     r'|\.-\.'                      # .-. Eave 부리
     r'|[╭╮╰╯].*'                  # 말풍선 테두리
@@ -68,14 +68,33 @@ class SessionConfig:
     quiet_seconds: float
     max_wait_seconds: float
     poll_interval: float
+    state_file: str = ""
 
 
 class TmuxSession:
     def __init__(self, cfg: SessionConfig):
         self.cfg = cfg
-        self.active_session = cfg.session_name
+        self.active_session = self._load_active_session()
         self.lock = asyncio.Lock()
         self._pipe_active = False
+
+    def _load_active_session(self) -> str:
+        if self.cfg.state_file:
+            try:
+                name = Path(self.cfg.state_file).read_text().strip()
+                if name and SESSION_NAME_RE.match(name):
+                    return name
+            except (FileNotFoundError, OSError):
+                pass
+        return self.cfg.session_name
+
+    def _save_active_session(self):
+        if self.cfg.state_file:
+            try:
+                Path(self.cfg.state_file).parent.mkdir(parents=True, exist_ok=True)
+                Path(self.cfg.state_file).write_text(self.active_session)
+            except OSError as e:
+                logger.warning("state 저장 실패: %s", e)
 
     @property
     def pipe_active(self) -> bool:
@@ -99,6 +118,7 @@ class TmuxSession:
                 )
                 self._pipe_active = False
             self.active_session = session_name
+            self._save_active_session()
         return True
 
     def session_exists(self) -> bool:
