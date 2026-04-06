@@ -217,7 +217,9 @@ class TmuxSession:
         return cleaned.split('\n')
 
     def _extract_from_log(self, log_offset: int, sent_text: str) -> str:
-        """log 파일에서 ANSI 제거 후 응답 추출."""
+        """log 파일에서 ANSI 제거 후 응답 추출.
+        ⏺ 로 시작하는 첫 줄 = Claude 응답 시작. 없으면 마지막 ❯ 이후.
+        """
         try:
             with open(self.cfg.output_log, 'rb') as f:
                 f.seek(log_offset)
@@ -225,34 +227,18 @@ class TmuxSession:
         except FileNotFoundError:
             return ""
         lines = self._strip_ansi_to_lines(raw)
-        lines = self._skip_sent_echo(lines, sent_text)
-        return self._clean_lines(lines)
 
-    def _skip_sent_echo(self, lines: list[str], sent: str) -> list[str]:
-        """사용자 입력 echo 줄 건너뜀."""
-        if not sent:
-            return lines
-        remaining = sent
-        result_start = 0
+        # ⏺ 로 시작하는 첫 줄부터 응답 (사용자 echo는 그 전)
         for i, line in enumerate(lines):
-            s = line.strip()
-            if s.startswith('❯'):
-                s = s[1:].strip()
-            if not s:
-                result_start = i + 1
-                continue
-            if remaining.startswith(s):
-                remaining = remaining[len(s):].strip()
-                result_start = i + 1
-                if not remaining:
-                    break
-            elif s in remaining:
-                remaining = ''
-                result_start = i + 1
-                break
-            else:
-                break
-        return lines[result_start:]
+            if line.strip().startswith('⏺'):
+                return self._clean_lines(lines[i:])
+
+        # ⏺ 없으면 마지막 ❯ 줄 이후 반환
+        response_start = 0
+        for i, line in enumerate(lines):
+            if line.strip().startswith('❯'):
+                response_start = i + 1
+        return self._clean_lines(lines[response_start:])
 
     def _clean_lines(self, lines: list[str]) -> str:
         result = []
