@@ -1,8 +1,8 @@
 {
-  "version": "1.11.1",
+  "version": "1.11.2",
   "changes": [
-    "버그수정: capture_pane 기반 응답 추출로 복구 — 로그파일 ANSI 파싱 방식이 '응답없음' 버그 유발",
-    "버그수정: ❯ 사용자 입력 라인 역방향 검색으로 응답 시작점 탐지",
-    "성능: poll_interval 0.1, quiet_seconds 1.5 유지"
+    "버그수정: wait_for_response에서 ANSI 제거 후 ❯ 프롬프트 감지 — raw log에서 매칭 실패로 '응답없음' 발생하던 문제 수정",
+    "버그수정: _strip_ansi_to_lines CR 처리 개선 (CR+LF, CR 통일 후 분리)",
+    "변경: 설치 시 Terminal.app 사용 (iTerm2 대신 Dock에서 바로 보임)"
   ]
 }

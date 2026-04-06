@@ -1,5 +1,5 @@
 """
-tmux session controller — owns the PTY, iTerm2 just displays via attach.
+tmux session controller — owns the PTY, terminal just displays via attach.
 """
 import asyncio
 import logging
@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 CLAUDE_PROMPT_RE = re.compile(r'^❯\s*$', re.MULTILINE)
 SESSION_NAME_RE = re.compile(r'^[a-zA-Z0-9_\-]{1,50}$')
 _DANGEROUS_CTRL = re.compile(r'\bC-[dDzZ]\b')
+
+# ANSI escape sequence stripping (CSI + single-char ESC sequences)
+_ANSI_ESC = re.compile(r'\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
 _NOISE_RE = re.compile(
     r'^(?:'
@@ -57,7 +60,6 @@ class TmuxSession:
         return self._pipe_active
 
     async def switch_to(self, session_name: str) -> bool:
-        """Switch active session. Returns True if session exists."""
         if not SESSION_NAME_RE.match(session_name):
             return False
         r = await asyncio.to_thread(
@@ -91,7 +93,7 @@ class TmuxSession:
     def ensure_session(self):
         if not self.session_exists():
             try:
-                open(self.cfg.output_log, 'w').close()  # clear stale log for new session
+                open(self.cfg.output_log, 'w').close()
             except OSError:
                 pass
             self.create_session()
@@ -137,7 +139,6 @@ class TmuxSession:
         return '\n'.join(lines).strip()
 
     def _send_text_blocking(self, text: str):
-        """Send text literally then Enter — both in one thread call."""
         subprocess.run(['tmux', 'send-keys', '-t', self.active_session, '-l', text])
         subprocess.run(['tmux', 'send-keys', '-t', self.active_session, 'Enter'])
 
@@ -150,7 +151,6 @@ class TmuxSession:
             if not self._pipe_active:
                 await asyncio.to_thread(self.start_pipe)
             log_offset = self._log_size()
-            # -l sends text literally; both calls batched in one thread
             await asyncio.to_thread(self._send_text_blocking, text)
         return log_offset, sent
 
@@ -176,36 +176,64 @@ class TmuxSession:
         while True:
             await asyncio.sleep(self.cfg.poll_interval)
             size, tail = self._read_log_tail(log_offset)
-            if tail and CLAUDE_PROMPT_RE.search(tail):
-                await asyncio.sleep(0.1)  # brief settle wait
-                return self._extract_response(sent_text)
+            if tail:
+                # ANSI 코드 제거 후 ❯ 프롬프트 감지
+                clean_tail = _ANSI_ESC.sub('', tail).replace('\r\n', '\n').replace('\r', '\n')
+                if CLAUDE_PROMPT_RE.search(clean_tail):
+                    await asyncio.sleep(0.1)
+                    return self._extract_from_log(log_offset, sent_text)
             if size != last_size:
                 last_size = size
                 last_change = time.time()
             elif size > log_offset and (time.time() - last_change) > self.cfg.quiet_seconds:
-                return self._extract_response(sent_text)
+                return self._extract_from_log(log_offset, sent_text)
             if time.time() - start > self.cfg.max_wait_seconds:
-                return self._extract_response(sent_text) or "(응답 시간 초과)"
+                return self._extract_from_log(log_offset, sent_text) or "(응답 시간 초과)"
 
-    def _find_response_start(self, all_lines: list[str], sent_text: str) -> int:
-        """Search backwards for the ❯ user input line; response starts after it."""
-        sent_stripped = sent_text.strip()
-        for i in range(len(all_lines) - 1, -1, -1):
-            line = all_lines[i].strip()
-            if line.startswith('❯'):
-                after_prompt = line[1:].strip()
-                if after_prompt and (
-                    sent_stripped.startswith(after_prompt)
-                    or after_prompt in sent_stripped
-                ):
-                    return i + 1
-        return max(0, len(all_lines) - 50)
+    def _strip_ansi_to_lines(self, raw: str) -> list[str]:
+        """ANSI 제거 + CR 처리 후 줄 분리."""
+        cleaned = _ANSI_ESC.sub('', raw)
+        # CR+LF → LF, 나머지 CR → LF
+        cleaned = cleaned.replace('\r\n', '\n').replace('\r', '\n')
+        return cleaned.split('\n')
 
-    def _extract_response(self, sent_text: str) -> str:
-        """Extract Claude's response using capture_pane (rendered, no ANSI noise)."""
-        all_lines = self.capture_pane(scrollback=500)
-        start_idx = self._find_response_start(all_lines, sent_text)
-        return self._clean_lines(all_lines[start_idx:])
+    def _extract_from_log(self, log_offset: int, sent_text: str) -> str:
+        """log 파일에서 ANSI 제거 후 응답 추출."""
+        try:
+            with open(self.cfg.output_log, 'rb') as f:
+                f.seek(log_offset)
+                raw = f.read().decode('utf-8', errors='replace')
+        except FileNotFoundError:
+            return ""
+        lines = self._strip_ansi_to_lines(raw)
+        lines = self._skip_sent_echo(lines, sent_text)
+        return self._clean_lines(lines)
+
+    def _skip_sent_echo(self, lines: list[str], sent: str) -> list[str]:
+        """사용자 입력 echo 줄 건너뜀."""
+        if not sent:
+            return lines
+        remaining = sent
+        result_start = 0
+        for i, line in enumerate(lines):
+            s = line.strip()
+            if s.startswith('❯'):
+                s = s[1:].strip()
+            if not s:
+                result_start = i + 1
+                continue
+            if remaining.startswith(s):
+                remaining = remaining[len(s):].strip()
+                result_start = i + 1
+                if not remaining:
+                    break
+            elif s in remaining:
+                remaining = ''
+                result_start = i + 1
+                break
+            else:
+                break
+        return lines[result_start:]
 
     def _clean_lines(self, lines: list[str]) -> str:
         result = []
@@ -230,8 +258,8 @@ class TmuxSession:
         except FileNotFoundError:
             return 0
 
-    def _read_log_tail(self, offset: int, tail_bytes: int = 1024) -> tuple[int, str]:
-        """Returns (total_size, tail_text) — reads only the last tail_bytes after offset."""
+    def _read_log_tail(self, offset: int, tail_bytes: int = 2048) -> tuple[int, str]:
+        """(total_size, tail_text) 반환 — offset 이후 마지막 tail_bytes만 읽음."""
         try:
             with open(self.cfg.output_log, 'rb') as f:
                 f.seek(0, 2)
