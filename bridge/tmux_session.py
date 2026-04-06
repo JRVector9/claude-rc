@@ -53,7 +53,8 @@ _NOISE_RE = re.compile(
 
 _STATUS_RE = re.compile(
     r'Elucidating|Actualizing|Actioning|Thinking|thinking with|'
-    r'Musing|Pondering|running stop hook|stop hook',
+    r'Musing|Pondering|Unravelling|Sautéed|Churned|Generating|'
+    r'running stop hook|stop hook',
     re.IGNORECASE
 )
 
