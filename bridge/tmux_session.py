@@ -43,6 +43,10 @@ _NOISE_RE = re.compile(
     r'|\(\(.*\)\)'                 # ((✦)(✦)) 등
     r'|\*[^*]+\*'                  # *ruffles feathers* 등
     r'|[-`.\u00b4]{1,4}'          # -, --, .., `´ 단독 잔재
+    r'|\(.*><.*\)'                 # ( >< ) Eave 발
+    r'|\.-\.'                      # .-. Eave 부리
+    r'|[╭╮╰╯].*'                  # 말풍선 테두리
+    r'|[│].*'                      # 말풍선 내용
     r')$',
     re.IGNORECASE
 )
@@ -220,29 +224,25 @@ class TmuxSession:
         cleaned = cleaned.replace('\r\n', '\n').replace('\r', '\n')
         return cleaned.split('\n')
 
+    def _find_response_start(self, all_lines: list[str], sent_text: str) -> int:
+        """capture_pane 결과에서 ❯ sent_text 줄을 역방향 검색, 그 다음 줄부터 응답."""
+        sent_stripped = sent_text.strip()[:30]  # 앞 30자만 비교 (word-wrap 대응)
+        for i in range(len(all_lines) - 1, -1, -1):
+            line = all_lines[i].strip()
+            if line.startswith('❯'):
+                after_prompt = line[1:].strip()
+                if after_prompt and (
+                    sent_stripped.startswith(after_prompt[:20])
+                    or after_prompt[:20] in sent_stripped
+                ):
+                    return i + 1
+        return max(0, len(all_lines) - 50)
+
     def _extract_from_log(self, log_offset: int, sent_text: str) -> str:
-        """log 파일에서 ANSI 제거 후 응답 추출.
-        ⏺ 로 시작하는 첫 줄 = Claude 응답 시작. 없으면 마지막 ❯ 이후.
-        """
-        try:
-            with open(self.cfg.output_log, 'rb') as f:
-                f.seek(log_offset)
-                raw = f.read().decode('utf-8', errors='replace')
-        except FileNotFoundError:
-            return ""
-        lines = self._strip_ansi_to_lines(raw)
-
-        # ⏺ 로 시작하는 첫 줄부터 응답 (사용자 echo는 그 전)
-        for i, line in enumerate(lines):
-            if line.strip().startswith('⏺'):
-                return self._clean_lines(lines[i:])
-
-        # ⏺ 없으면 마지막 ❯ 줄 이후 반환
-        response_start = 0
-        for i, line in enumerate(lines):
-            if line.strip().startswith('❯'):
-                response_start = i + 1
-        return self._clean_lines(lines[response_start:])
+        """capture_pane 기반 응답 추출 (렌더링된 텍스트 → ANSI 없음)."""
+        all_lines = self.capture_pane(scrollback=500)
+        start_idx = self._find_response_start(all_lines, sent_text)
+        return self._clean_lines(all_lines[start_idx:])
 
     def _clean_lines(self, lines: list[str]) -> str:
         result = []
