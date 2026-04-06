@@ -17,22 +17,35 @@ CLAUDE_PROMPT_RE = re.compile(r'^❯\s*$', re.MULTILINE)
 SESSION_NAME_RE = re.compile(r'^[a-zA-Z0-9_\-]{1,50}$')
 _DANGEROUS_CTRL = re.compile(r'\bC-[dDzZ]\b')
 
-# ANSI escape sequence stripping (CSI + single-char ESC sequences)
-_ANSI_ESC = re.compile(r'\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+# ANSI / terminal escape sequence 제거
+# CSI sequences, single-char ESC, OSC sequences (title 등) 모두 포함
+_ANSI_ESC = re.compile(
+    r'\x1b(?:'
+    r'\][^\x07\x1b]*(?:\x07|\x1b\\)'   # OSC: ESC ] ... BEL or ST
+    r'|[@-Z\\-_]'                        # single-char: ESC @-Z, \, ]-_
+    r'|\[[0-?]*[ -/]*[@-~]'              # CSI: ESC [ ... final
+    r')'
+)
 
 _NOISE_RE = re.compile(
     r'^(?:'
-    r'[✢✳✶✻✽·⏺\s]*'
+    r'[✢✳✶✻✽·⏺⏵\s]*'
     r'|[─═─]{3,}'
     r'|esc\s*to\s*interrupt'
     r'|\?\s*for\s*shortcuts'
     r'|❯\s*.*'
+    r'|--\s*INSERT\s*--.*'
+    r'|.*acceptedit.*'
+    r'|.*shift\+tab.*'
+    r'|\(✦\).*'
+    r'|.*\bEave\b.*'
     r')$',
     re.IGNORECASE
 )
 
 _STATUS_RE = re.compile(
-    r'Elucidating|Actualizing|Thinking|thinking with|running stop hook|stop hook',
+    r'Elucidating|Actualizing|Thinking|thinking with|Musing|Pondering|'
+    r'running stop hook|stop hook',
     re.IGNORECASE
 )
 
@@ -177,7 +190,7 @@ class TmuxSession:
             await asyncio.sleep(self.cfg.poll_interval)
             size, tail = self._read_log_tail(log_offset)
             if tail:
-                # ANSI 코드 제거 후 ❯ 프롬프트 감지
+                # ANSI 제거 후 ❯ 프롬프트 감지 → 응답 완료
                 clean_tail = _ANSI_ESC.sub('', tail).replace('\r\n', '\n').replace('\r', '\n')
                 if CLAUDE_PROMPT_RE.search(clean_tail):
                     await asyncio.sleep(0.1)
@@ -186,7 +199,13 @@ class TmuxSession:
                 last_size = size
                 last_change = time.time()
             elif size > log_offset and (time.time() - last_change) > self.cfg.quiet_seconds:
-                return self._extract_from_log(log_offset, sent_text)
+                # quiet 구간 — Claude가 아직 thinking 중인지 확인
+                lines = self.capture_pane(scrollback=10)
+                recent = '\n'.join(lines[-5:])
+                if _STATUS_RE.search(recent):
+                    last_change = time.time()  # 아직 처리 중 → 타이머 리셋
+                else:
+                    return self._extract_from_log(log_offset, sent_text)
             if time.time() - start > self.cfg.max_wait_seconds:
                 return self._extract_from_log(log_offset, sent_text) or "(응답 시간 초과)"
 
